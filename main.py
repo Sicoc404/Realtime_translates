@@ -2,7 +2,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Worker  # ⚙️ Updated import for livekit v1.x
+from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 # ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
 
@@ -27,9 +27,16 @@ ROOM_KR = "room_kr"  # 韩文翻译房间
 ROOM_VN = "room_vn"  # 越南文翻译房间
 
 async def main():
-    # ⚙️ Updated worker initialization for livekit v1.x
-    # 初始化工作线程，OpenAI API密钥在session创建时提供
-    worker = Worker()
+    # ⚙️ Added WorkerOptions for livekit v1.x
+    opts = WorkerOptions(
+        agent=None,  # 不使用自动代理功能，我们手动管理会话
+        api_key=LIVEKIT_API_KEY,
+        api_secret=LIVEKIT_API_SECRET,
+        host=LIVEKIT_URL
+    )
+    
+    # 初始化工作线程，使用WorkerOptions
+    worker = Worker(opts)
     await worker.start()
     
     # 设置字幕处理器
