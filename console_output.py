@@ -8,14 +8,10 @@ import threading
 # 创建Rich控制台对象
 console = Console()
 
-# 字幕状态
-kr_subtitle = ""
-vn_subtitle = ""
-
 # 线程锁，防止多线程并发写入
 lock = threading.Lock()
 
-def update_subtitles() -> Panel:
+def update_subtitles(kr_subtitle: str, vn_subtitle: str) -> Panel:
     """创建包含韩文和越南文字幕的面板"""
     kr_text = Text(f"韩文: {kr_subtitle}", style="bold cyan")
     vn_text = Text(f"越南文: {vn_subtitle}", style="bold yellow")
@@ -33,25 +29,41 @@ def setup_subtitle_handlers() -> Tuple[Callable[[str], None], Callable[[str], No
     返回:
         (韩文字幕处理器, 越南文字幕处理器)
     """
+    # ⚙️ Added nonlocal vars for subtitle handling
+    kr_subtitle = ""
+    vn_subtitle = ""
+    
     # 创建实时更新界面
-    live = Live(update_subtitles(), refresh_per_second=10)
+    live = Live(update_subtitles(kr_subtitle, vn_subtitle), refresh_per_second=10)
     live.start()
     
-    def kr_subtitle_handler(text: str) -> None:
+    def on_kr(text: str) -> None:
         """处理韩文字幕"""
+        # ⚙️ Added nonlocal vars for subtitle handling
         nonlocal kr_subtitle
+        global kr_subtitle_global
         with lock:
             kr_subtitle = text
-            live.update(update_subtitles())
+            kr_subtitle_global = text  # 同步更新全局变量用于API
+            live.update(update_subtitles(kr_subtitle, vn_subtitle))
+            print(f"[KR 字幕] {kr_subtitle}")
     
-    def vn_subtitle_handler(text: str) -> None:
+    def on_vn(text: str) -> None:
         """处理越南文字幕"""
+        # ⚙️ Added nonlocal vars for subtitle handling
         nonlocal vn_subtitle
+        global vn_subtitle_global
         with lock:
             vn_subtitle = text
-            live.update(update_subtitles())
+            vn_subtitle_global = text  # 同步更新全局变量用于API
+            live.update(update_subtitles(kr_subtitle, vn_subtitle))
+            print(f"[VN 字幕] {vn_subtitle}")
     
-    return kr_subtitle_handler, vn_subtitle_handler
+    return on_kr, on_vn
+
+# 全局字幕变量 - 供API使用
+kr_subtitle_global = ""
+vn_subtitle_global = ""
 
 # 可选：添加FastAPI支持
 try:
@@ -64,12 +76,12 @@ try:
     @app.get("/subtitles/kr")
     async def get_kr_subtitles():
         """获取韩文字幕"""
-        return JSONResponse({"text": kr_subtitle, "lang": "kr"})
+        return JSONResponse({"text": kr_subtitle_global, "lang": "kr"})
     
     @app.get("/subtitles/vn")
     async def get_vn_subtitles():
         """获取越南文字幕"""
-        return JSONResponse({"text": vn_subtitle, "lang": "vn"})
+        return JSONResponse({"text": vn_subtitle_global, "lang": "vn"})
     
     def start_api_server():
         """启动FastAPI服务器"""
