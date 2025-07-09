@@ -1,6 +1,6 @@
 from livekit import agents
 from livekit.agents import AgentSession  # ⚙️ Removed AgentContext import for livekit v1.x compatibility
-from livekit.plugins.audio import AudioCapture, AudioBroadcast
+# ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 from typing import Optional, Callable
 
@@ -39,28 +39,20 @@ async def create_session(
         "name": f"{lang_code.upper()} Translator"
     }
     
-    # 注册音频捕获插件 - 捕获用户的中文语音
-    audio_capture = AudioCapture()
-    
-    # 注册音频广播插件 - 广播翻译后的语音到房间
-    audio_broadcast = AudioBroadcast(room_name=room_name)
-    
-    # ⚙️ 使用新版API创建OpenAI实时模型
+    # ⚙️ 使用新版API创建OpenAI实时模型，无需手动创建音频插件
     realtime_model = openai.realtime.RealtimeModel(
         model="gpt-4o-realtime-preview",  # ⚙️ 更新为最新模型名称
-        audio_input=audio_capture,
-        audio_output=audio_broadcast,
-        text_callback=text_callback,  # 如果提供了回调，处理生成的文本
         system=prompt,  # 使用传入的提示词
+        text_callback=text_callback,  # 如果提供了回调，处理生成的文本
         turn_detection="server_vad",  # 使用服务器端语音活动检测
-        api_key=openai_api_key  # ⚙️ 添加API密钥参数
+        api_key=openai_api_key,  # ⚙️ 添加API密钥参数
+        room_name=room_name  # ⚙️ 直接在模型中指定房间名
     )
     
     # ⚙️ 新版API直接将连接参数传递给AgentSession构造函数
     session = AgentSession(
         **connection_info,
-        llm=realtime_model,
-        plugins=[audio_capture, audio_broadcast]
+        llm=realtime_model
     )
     
     # 启动会话
