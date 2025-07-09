@@ -1,5 +1,5 @@
 from livekit import agents
-from livekit.agents import AgentContext, AgentSession  # ⚙️ Updated import for livekit v1.x
+from livekit.agents import AgentSession  # ⚙️ Removed AgentContext import for livekit v1.x compatibility
 from livekit.plugins.audio import AudioCapture, AudioBroadcast
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 from typing import Optional, Callable
@@ -30,14 +30,14 @@ async def create_session(
     返回:
         agents.AgentSession: LiveKit代理会话
     """
-    # 创建会话上下文
-    context = AgentContext(
-        url=livekit_url,
-        api_key=api_key,
-        api_secret=api_secret,
-        identity=f"translator_{lang_code}",
-        name=f"{lang_code.upper()} Translator"
-    )
+    # ⚙️ 创建会话参数，不再使用AgentContext
+    connection_info = {
+        "url": livekit_url,
+        "api_key": api_key,
+        "api_secret": api_secret,
+        "identity": f"translator_{lang_code}",
+        "name": f"{lang_code.upper()} Translator"
+    }
     
     # 注册音频捕获插件 - 捕获用户的中文语音
     audio_capture = AudioCapture()
@@ -56,9 +56,9 @@ async def create_session(
         api_key=openai_api_key  # ⚙️ 添加API密钥参数
     )
     
-    # ⚙️ 新版API直接将插件传递给AgentSession构造函数
+    # ⚙️ 新版API直接将连接参数传递给AgentSession构造函数
     session = AgentSession(
-        context=context,
+        **connection_info,
         llm=realtime_model,
         plugins=[audio_capture, audio_broadcast]
     )
