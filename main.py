@@ -2,7 +2,8 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents.openai import register_openai_worker
+from livekit.agents import Worker  # ⚙️ Updated import for livekit v1.x
+from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 
 from session_factory import create_session
 from translation_prompts import KR_PROMPT, VN_PROMPT
@@ -25,8 +26,10 @@ ROOM_KR = "room_kr"  # 韩文翻译房间
 ROOM_VN = "room_vn"  # 越南文翻译房间
 
 async def main():
-    # 注册 OpenAI 实时处理 Worker
-    register_openai_worker(api_key=OPENAI_API_KEY)
+    # ⚙️ Updated worker initialization for livekit v1.x
+    # 初始化工作线程，OpenAI API密钥在session创建时提供
+    worker = Worker()
+    await worker.start()
     
     # 设置字幕处理器
     kr_subtitle_handler, vn_subtitle_handler = setup_subtitle_handlers()
@@ -43,6 +46,7 @@ async def main():
         livekit_url=LIVEKIT_URL,
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
+        openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
         text_callback=None  # 原音不需要文本回调
     )
     
@@ -54,6 +58,7 @@ async def main():
         livekit_url=LIVEKIT_URL,
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
+        openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
         text_callback=kr_subtitle_handler
     )
     
@@ -65,6 +70,7 @@ async def main():
         livekit_url=LIVEKIT_URL,
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
+        openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
         text_callback=vn_subtitle_handler
     )
     
@@ -90,6 +96,10 @@ async def main():
             kr_session.close(),
             vn_session.close()
         )
+        
+        # ⚙️ 关闭worker
+        await worker.stop()
+        
         print("翻译服务已关闭")
 
 if __name__ == "__main__":
