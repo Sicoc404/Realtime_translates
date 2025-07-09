@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from livekit import agents
 from livekit.agents import Worker  # ⚙️ Updated import for livekit v1.x
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
+# ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
 
 from session_factory import create_session
 from translation_prompts import KR_PROMPT, VN_PROMPT
