@@ -3,10 +3,12 @@ import os
 import threading
 from contextlib import asynccontextmanager
 from typing import Dict, Any
+import pathlib
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
 from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from livekit import agents
@@ -68,63 +70,76 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ⚙️ Mount static files
+static_dir = pathlib.Path(__file__).parent / "static"
+# 确保静态文件目录存在
+if not static_dir.exists():
+    static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 # ⚙️ Health and UI routes
 @app.get("/", response_class=HTMLResponse)
 async def homepage():
-    """根路由，返回一个简单的HTML响应"""
-    return """
-    <html>
-        <head>
-            <title>实时翻译服务</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    line-height: 1.6;
-                }
-                h1 {
-                    color: #4a5568;
-                    border-bottom: 2px solid #e2e8f0;
-                    padding-bottom: 10px;
-                }
-                .status {
-                    background-color: #f0fff4;
-                    border-left: 4px solid #48bb78;
-                    padding: 12px;
-                    margin: 20px 0;
-                }
-                a {
-                    color: #4299e1;
-                    text-decoration: none;
-                }
-                a:hover {
-                    text-decoration: underline;
-                }
-                .links {
-                    margin-top: 30px;
-                }
-                .links a {
-                    margin-right: 15px;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>实时翻译服务 ✔️</h1>
-            <div class="status">
-                <p>🟢 实时翻译服务运行中</p>
-            </div>
-            <p>
-                这是一个基于LiveKit的实时语音翻译系统，可以将中文语音翻译成韩文和越南文。
-            </p>
-            <div class="links">
-                <a href="/health">健康检查</a> | 
-                <a href="/status">服务状态</a>
-            </div>
-        </body>
-    </html>
-    """
+    """根路由，返回index.html页面"""
+    # ⚙️ Serving custom index.html
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        # 如果找不到index.html，返回一个简单的HTML响应
+        return """
+        <html>
+            <head>
+                <title>实时翻译服务</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        max-width: 800px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        line-height: 1.6;
+                    }
+                    h1 {
+                        color: #4a5568;
+                        border-bottom: 2px solid #e2e8f0;
+                        padding-bottom: 10px;
+                    }
+                    .status {
+                        background-color: #f0fff4;
+                        border-left: 4px solid #48bb78;
+                        padding: 12px;
+                        margin: 20px 0;
+                    }
+                    a {
+                        color: #4299e1;
+                        text-decoration: none;
+                    }
+                    a:hover {
+                        text-decoration: underline;
+                    }
+                    .links {
+                        margin-top: 30px;
+                    }
+                    .links a {
+                        margin-right: 15px;
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>实时翻译服务 ✔️</h1>
+                <div class="status">
+                    <p>🟢 实时翻译服务运行中</p>
+                </div>
+                <p>
+                    这是一个基于LiveKit的实时语音翻译系统，可以将中文语音翻译成韩文和越南文。
+                </p>
+                <div class="links">
+                    <a href="/health">健康检查</a> | 
+                    <a href="/status">服务状态</a>
+                </div>
+            </body>
+        </html>
+        """
 
 @app.get("/health")
 async def health_check():
