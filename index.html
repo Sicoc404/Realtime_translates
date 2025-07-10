@@ -6,6 +6,8 @@
     <title>实时翻译广播 - Real-time Translation Broadcast</title>
     <!-- ⚙️ 引入 LiveKit 客户端 SDK -->
     <script src="https://unpkg.com/livekit-client@2.0.0/dist/livekit-client.umd.js"></script>
+    <!-- ⚙️ 引入自定义状态脚本 -->
+    <script src="/static/status.js"></script>
     <style>
         * {
             margin: 0;
@@ -50,6 +52,44 @@
         .header p {
             font-size: 1.1rem;
             opacity: 0.9;
+        }
+        
+        /* 添加服务器状态样式 */
+        .server-status {
+            margin-top: 10px;
+            padding: 5px 10px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 5px;
+            display: inline-block;
+        }
+        
+        .server-status.running {
+            background: rgba(46, 204, 113, 0.2);
+        }
+        
+        .server-status.stopped {
+            background: rgba(231, 76, 60, 0.2);
+        }
+        
+        .server-info {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .health-check-btn {
+            margin-top: 10px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        
+        .health-check-btn:hover {
+            background: rgba(255,255,255,0.3);
         }
 
         .language-selector {
@@ -378,6 +418,9 @@
             <button class="back-btn" onclick="showLanguageSelector()" style="display: none;" id="backBtn">← 返回</button>
             <h1>实时翻译广播</h1>
             <p>Real-time Translation Broadcast Service</p>
+            <div class="server-status" id="serverStatus">服务状态加载中...</div>
+            <div class="server-info" id="roomInfo"></div>
+            <button class="health-check-btn" id="healthCheckBtn">检查服务健康状态</button>
         </div>
 
         <div class="language-selector" id="languageSelector">
