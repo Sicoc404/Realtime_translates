@@ -2,7 +2,8 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Worker, WorkerOptions, run_app  # ⚙️ Updated import for livekit v1.x
+from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
+from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 # ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
 
@@ -29,22 +30,13 @@ ROOM_VN = "room_vn"  # 越南文翻译房间
 async def entrypoint_function():
     """
     LiveKit Worker 入口点函数
-    此函数作为 WorkerOptions 的第一个位置参数
+    此函数作为 WorkerOptions 的第一个位置参数，包含主要应用逻辑
     """
-    pass  # 这个函数只是为了作为入口点，实际逻辑在main中
+    # 调用主函数
+    await main()
 
 async def main():
-    # ⚙️ Updated WorkerOptions call for livekit v1.x (entrypoint as first positional argument)
-    opts = WorkerOptions(
-        entrypoint_function,  # 传入口函数作为第一个位置参数
-        api_key=LIVEKIT_API_KEY,
-        api_secret=LIVEKIT_API_SECRET,
-        ws_url=LIVEKIT_URL  # 使用ws_url而不是host
-    )
-    
-    # 初始化工作线程，使用WorkerOptions
-    worker = Worker(opts)
-    await worker.start()
+    # ⚙️ Worker will be created by run_app in the main block
     
     # 设置字幕处理器
     kr_subtitle_handler, vn_subtitle_handler = setup_subtitle_handlers()
@@ -113,10 +105,17 @@ async def main():
         )
         
         # ⚙️ 关闭worker
-        await worker.stop()
+        # The worker is managed by run_app, so we don't need to stop it here
+        # await worker.stop()
         
         print("翻译服务已关闭")
 
 if __name__ == "__main__":
-    # ⚙️ Using run_app instead of asyncio.run() for livekit v1.x compatibility
-    run_app(main) 
+    # ⚙️ Using run_app(opts) from cli module for livekit v1.x compatibility
+    opts = WorkerOptions(
+        entrypoint_function,  # 传入口函数作为第一个位置参数
+        api_key=LIVEKIT_API_KEY,
+        api_secret=LIVEKIT_API_SECRET,
+        ws_url=LIVEKIT_URL  # 使用ws_url而不是host
+    )
+    run_app(opts) 
