@@ -249,6 +249,28 @@
             background: rgba(255, 255, 255, 0.3);
         }
 
+        .speaker-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .speaker-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .speaker-btn.hidden {
+            display: none;
+        }
+
         .subtitle-area {
             background: #2c3e50;
             color: white;
@@ -416,6 +438,7 @@
     <div class="container">
         <div class="header">
             <button class="back-btn" onclick="showLanguageSelector()" style="display: none;" id="backBtn">← 返回</button>
+            <button class="speaker-btn" onclick="enterSpeakerMode()" id="speakerBtn">🎤 讲者模式</button>
             <h1>实时翻译广播</h1>
             <p>Real-time Translation Broadcast Service</p>
             <div class="server-status" id="serverStatus">服务状态加载中...</div>
@@ -451,11 +474,11 @@
             <div class="broadcast-control">
                 <!-- ⚙️ LiveKit连接表单 -->
                 <div class="connection-form" id="connectionForm">
-                    <div class="form-group">
+                    <div class="form-group" id="roleGroup" style="display: none;">
                         <label for="role">角色选择</label>
                         <select id="role" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
-                            <option value="speaker">🎤 讲者</option>
                             <option value="audience">🎧 观众</option>
+                            <option value="speaker">🎤 讲者</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -532,6 +555,7 @@
         let isConnected = false;
         let subtitlesEnabled = true;
         let subtitleSize = 1.2; // rem
+        let isSpeakerMode = false; // 是否为讲者模式
         
         // ⚙️ LiveKit相关变量
         let room = null;
@@ -570,6 +594,13 @@
                 document.getElementById('languageSelector').style.display = 'none';
                 document.getElementById('broadcastArea').classList.add('active');
                 document.getElementById('backBtn').style.display = 'block';
+                document.getElementById('speakerBtn').style.display = 'none';
+                
+                // 根据模式显示角色信息
+                if (isSpeakerMode) {
+                    document.getElementById('roleGroup').style.display = 'block';
+                    document.getElementById('role').value = 'speaker';
+                }
             }, 300);
         }
 
@@ -577,6 +608,11 @@
             document.getElementById('languageSelector').style.display = 'flex';
             document.getElementById('broadcastArea').classList.remove('active');
             document.getElementById('backBtn').style.display = 'none';
+            document.getElementById('speakerBtn').style.display = 'block';
+            
+            // 重置模式
+            isSpeakerMode = false;
+            document.getElementById('roleGroup').style.display = 'none';
             
             // 断开连接
             if (isConnected) {
@@ -584,13 +620,20 @@
             }
         }
 
-        // ⚙️ 连接到LiveKit房间 - 按照官方文档结构
+        // ⚙️ 进入讲者模式
+        function enterSpeakerMode() {
+            isSpeakerMode = true;
+            // 不自动选择语言，让用户选择
+            console.log('已切换到讲者模式');
+        }
+
+        // ⚙️ 连接到LiveKit房间 - 严格按照官方文档结构
         async function connectToLiveKit() {
             try {
                 updateStatus('正在连接...', false);
                 
-                // 获取用户选择的角色
-                const role = document.getElementById('role').value;
+                // 根据模式确定角色：默认观众，讲者模式时为讲者
+                const role = isSpeakerMode ? 'speaker' : 'audience';
                 const roomName = document.getElementById('roomName').value;
                 
                 // 生成随机身份标识
@@ -634,17 +677,17 @@
                 
                 console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}, 角色: ${role}`);
                 
-                // ⚙️ create local audio track for speaker only
+                // ⚙️ 先连接到房间
+                await room.connect(wsURL, token);
+                console.log("✅ 已连接");
+                
+                // ⚙️ create and publish track after connection
                 if (role === "speaker") {
                     const [audioTrack] = await createLocalTracks({ audio: true });
                     localAudioTrack = audioTrack;
                     await room.localParticipant.publishTrack(audioTrack);
-                    console.log('✅ 讲者模式：已发布本地音频轨道');
+                    console.log("📢 讲者轨道已发布");
                 }
-                
-                // ⚙️ 连接到房间
-                await room.connect(wsURL, token);
-                console.log('✅ 已连接到房间，角色：', role);
                 
                 // ⚙️ 创建音频可视化组件
                 createAudioVisualizers();
@@ -655,9 +698,9 @@
                 document.getElementById('connectionForm').style.display = 'none';
                 
             } catch (error) {
-                console.error('LiveKit连接错误:', error);
+                console.error('连接或发布失败:', error);
                 updateStatus('连接失败', false);
-                alert(`连接失败: ${error.message}`);
+                alert(`操作失败: ${error.message}`);
             }
         }
         
