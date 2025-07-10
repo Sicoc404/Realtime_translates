@@ -513,6 +513,9 @@
                     <div class="audio-bars" id="speakerBars"></div>
                 </div>
 
+                <!-- ⚙️ 远端音频容器 -->
+                <div id="audioContainer" style="display: none;"></div>
+
                 <!-- ⚙️ 添加字幕显示区域 -->
                 <div class="subtitle-area">
                     <div class="subtitle-text" id="subs-kr">
@@ -548,7 +551,7 @@
 
     <script>
         // ⚙️ 从LiveKit客户端SDK导入所需的类 - 按照官方文档结构
-        const { Room, RoomEvent, RemoteTrack, DataPacket_Kind, ConnectionState, createLocalTracks } = LivekitClient;
+        const { Room, RoomEvent, Track, RemoteTrack, DataPacket_Kind, ConnectionState, createLocalTracks } = LivekitClient;
         
         // 全局变量
         let currentLanguage = null;
@@ -766,26 +769,47 @@
         
         // ⚙️ 设置房间事件监听器
         function setupRoomEventListeners() {
-            // 监听参与者发布的音轨
-            room.on(RoomEvent.ParticipantTrackPublished, async (trackPublication, participant) => {
-                console.log(`参与者 ${participant.identity} 发布了音轨:`, trackPublication);
+            // ⚙️ 监听远端音轨订阅 - 按照官方文档结构
+            room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                console.log(`订阅到 ${participant.identity} 的音轨:`, track.kind);
                 
-                // 自动订阅音轨
-                if (trackPublication.kind === 'audio') {
-                    const track = await trackPublication.track;
-                    if (track) {
-                        // 为音轨创建音频元素
-                        const audioElement = new Audio();
-                        track.attach(audioElement);
-                        audioElement.play();
-                        console.log(`正在播放 ${participant.identity} 的音频`);
-                        
-                        // 更新音频可视化
-                        if (speakerVisualizer) {
-                            speakerVisualizer.setTrack(track);
-                        }
-                    }
+                if (track.kind === Track.Kind.Audio) {
+                    // ⚙️ Subscribe and auto-play remote audio
+                    console.log(`正在播放 ${participant.identity} 的音频`);
+                    const elem = track.attach();
+                    elem.volume = document.getElementById('volumeSlider').value / 100;
+                    document.getElementById("audioContainer").appendChild(elem);
+                    
+                    // 处理自动播放失败的情况
+                    elem.play().catch(e => {
+                        console.warn('自动播放失败，可能需要用户交互:', e);
+                    });
                 }
+            });
+
+            // ⚙️ 监听远端音轨取消订阅
+            room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                console.log(`取消订阅 ${participant.identity} 的音轨:`, track.kind);
+                
+                if (track.kind === Track.Kind.Audio) {
+                    // ⚙️ Clean up removed audio elements
+                    track.detach().forEach(el => el.remove());
+                    console.log(`已移除 ${participant.identity} 的音频元素`);
+                }
+            });
+
+            // ⚙️ 监听音频播放状态变化
+            room.on(RoomEvent.AudioPlaybackStatusChanged, (canPlayback) => {
+                console.log('音频播放状态变化:', canPlayback ? '可播放' : '被阻止');
+                if (!canPlayback) {
+                    // 如果自动播放被阻止，可以显示提示让用户点击播放
+                    console.warn('音频自动播放被浏览器阻止，可能需要用户手动操作');
+                }
+            });
+            
+            // 监听参与者发布的音轨（用于兼容性和调试）
+            room.on(RoomEvent.ParticipantTrackPublished, (trackPublication, participant) => {
+                console.log(`参与者 ${participant.identity} 发布了音轨:`, trackPublication.kind);
             });
             
             // 监听数据消息（字幕）
@@ -815,6 +839,12 @@
                     isConnected = false;
                     document.getElementById('connectionBtn').textContent = '连接';
                     document.getElementById('connectionForm').style.display = 'block';
+                    
+                    // 清理所有远端音频元素
+                    const audioContainer = document.getElementById('audioContainer');
+                    if (audioContainer) {
+                        audioContainer.innerHTML = '';
+                    }
                 }
             });
         }
@@ -875,6 +905,12 @@
                 // 断开房间连接
                 await room.disconnect();
                 room = null;
+            }
+            
+            // ⚙️ 清理所有远端音频元素
+            const audioContainer = document.getElementById('audioContainer');
+            if (audioContainer) {
+                audioContainer.innerHTML = '';
             }
             
             isConnected = false;
@@ -945,9 +981,15 @@
                     const volume = e.target.value;
                     document.getElementById('volumeValue').textContent = volume + '%';
                     
-                    // 调整音频元素音量
+                    // ⚙️ 调整所有音频元素音量（包括远端音频）
                     const audioElements = document.querySelectorAll('audio');
                     audioElements.forEach(audio => {
+                        audio.volume = volume / 100;
+                    });
+                    
+                    // 同时调整audioContainer中的音频元素
+                    const remoteAudioElements = document.querySelectorAll('#audioContainer audio');
+                    remoteAudioElements.forEach(audio => {
                         audio.volume = volume / 100;
                     });
                 });
