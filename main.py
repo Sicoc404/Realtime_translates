@@ -6,15 +6,17 @@ from typing import Dict, Any
 import pathlib
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from pydantic import BaseModel
 
 from livekit import agents
 from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
 from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
+from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
 from session_factory import create_session
 from translation_prompts import KR_PROMPT, VN_PROMPT
@@ -24,12 +26,12 @@ from console_output import setup_subtitle_handlers, start_api
 load_dotenv()
 
 # LiveKit 配置
-LIVEKIT_URL = os.environ.get("LIVEKIT_URL")
-LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY")
-LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET")
+LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "wss://your-livekit-server.com")
+LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "devkey")  # 默认开发密钥
+LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开发密钥
 
 # OpenAI API 密钥
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 # 房间名称
 ROOM_ZH = "room_zh"  # 中文原音房间
@@ -141,6 +143,11 @@ async def homepage():
         </html>
         """
 
+# ⚙️ Request models
+class TokenRequest(BaseModel):
+    roomName: str
+    identity: str
+
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
@@ -148,6 +155,27 @@ async def health_check():
         status_code=200,
         content={"status": "ok"}
     )
+
+# ⚙️ LiveKit token generation endpoint
+@app.post("/token")
+async def create_token(request: TokenRequest):
+    """生成LiveKit房间Token"""
+    try:
+        # 创建AccessToken
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
+            .with_identity(request.identity) \
+            .with_grants(VideoGrants(room_join=True, room=request.roomName)) \
+            .to_jwt()
+        
+        return JSONResponse(
+            status_code=200,
+            content={"token": token}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"生成Token失败: {str(e)}"}
+        )
 
 @app.get("/status")
 async def get_status():
