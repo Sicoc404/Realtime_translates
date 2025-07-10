@@ -1,9 +1,11 @@
 import asyncio
 import os
 import threading
+import time  # 添加time模块
 from contextlib import asynccontextmanager
 from typing import Dict, Any
 import pathlib
+import logging  # 添加logging模块
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, Request
@@ -21,6 +23,13 @@ from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generat
 from session_factory import create_session
 from translation_prompts import KR_PROMPT, VN_PROMPT
 from console_output import setup_subtitle_handlers, start_api
+
+# 设置日志
+logger = logging.getLogger("translation_service")
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 # 加载环境变量
 load_dotenv()
@@ -42,6 +51,7 @@ ROOM_VN = "room_vn"  # 越南文翻译房间
 translation_sessions = {}
 is_translation_running = False
 worker_task = None
+last_heartbeat = time.time()  # 添加心跳时间戳
 
 # ⚙️ FastAPI lifespan setup for background worker
 @asynccontextmanager
@@ -49,21 +59,23 @@ async def lifespan(app: FastAPI):
     # ⚙️ Startup: launch background worker
     global worker_task
     worker_task = asyncio.create_task(run_worker())
-    print("FastAPI 服务启动中...")
-    print("正在后台启动翻译服务...")
+    logger.info("FastAPI 服务启动中...")
+    logger.info("正在后台启动翻译服务...")
     
     yield  # 服务运行中...
     
     # ⚙️ Shutdown: cleanup resources
-    print("正在关闭翻译服务...")
+    logger.info("⚙️ 正在关闭翻译服务...")
     await shutdown_translation_service()
     if worker_task and not worker_task.done():
         worker_task.cancel()
         try:
             await worker_task
         except asyncio.CancelledError:
-            pass
-    print("翻译服务已关闭")
+            logger.info("⚙️ Worker canceled")
+        except Exception as e:
+            logger.exception("Worker shutdown error: %s", e)
+    logger.info("翻译服务已关闭")
 
 # ⚙️ Initialize FastAPI with lifespan
 app = FastAPI(
@@ -180,10 +192,17 @@ async def create_token(request: TokenRequest):
 @app.get("/status")
 async def get_status():
     """获取翻译服务状态"""
+    global last_heartbeat
+    
+    # 检查心跳是否在最近60秒内更新过
+    worker_alive = (time.time() - last_heartbeat) < 60
+    
     return JSONResponse(
         status_code=200,
         content={
             "translation_running": is_translation_running,
+            "worker_alive": worker_alive,
+            "last_heartbeat": last_heartbeat,
             "active_sessions": len(translation_sessions),
             "rooms": {
                 "chinese": ROOM_ZH,
@@ -196,6 +215,10 @@ async def get_status():
 # ⚙️ Startup background worker
 async def run_worker():
     """在后台运行LiveKit Worker"""
+    global last_heartbeat
+    
+    logger.info("⚙️ Worker started")
+    
     try:
         # 创建WorkerOptions
         opts = WorkerOptions(
@@ -205,15 +228,41 @@ async def run_worker():
             ws_url=LIVEKIT_URL  # 使用ws_url而不是host
         )
         
+        # 启动心跳任务
+        heartbeat_task = asyncio.create_task(worker_heartbeat())
+        
         # 启动翻译服务
         await entrypoint_function()
         
         # 注意：这里不直接调用run_app(opts)，因为它会阻塞当前协程
         # 我们已经在entrypoint_function中实现了主要逻辑
         
+        # 取消心跳任务
+        heartbeat_task.cancel()
+        
     except Exception as e:
-        print(f"启动翻译服务失败: {e}")
+        logger.exception(f"启动翻译服务失败: %s", e)
         raise
+    finally:
+        logger.info("⚙️ Worker exiting")
+
+# ⚙️ Worker heartbeat function
+async def worker_heartbeat():
+    """周期性更新worker心跳时间戳"""
+    global last_heartbeat
+    
+    try:
+        while True:
+            # 更新心跳时间戳
+            last_heartbeat = time.time()
+            logger.debug("Worker heartbeat updated: %s", last_heartbeat)
+            
+            # 每30秒更新一次
+            await asyncio.sleep(30)
+    except asyncio.CancelledError:
+        logger.debug("Heartbeat task canceled")
+    except Exception as e:
+        logger.exception("Heartbeat error: %s", e)
 
 async def entrypoint_function():
     """
@@ -225,7 +274,7 @@ async def entrypoint_function():
 
 async def main():
     """主要的音频翻译处理逻辑"""
-    global is_translation_running, translation_sessions
+    global is_translation_running, translation_sessions, last_heartbeat
     
     try:
         # 设置字幕处理器
@@ -235,8 +284,11 @@ async def main():
         # 注意：我们不再需要在这里启动FastAPI，因为它已经作为主应用启动
         # start_api()
         
+        # 更新心跳
+        last_heartbeat = time.time()
+        
         # 创建三个不同的会话
-        print("正在启动翻译会话...")
+        logger.info("正在启动翻译会话...")
         
         # 1. 中文原音会话 - 仅用于广播原始语音
         zh_session = await create_session(
@@ -282,12 +334,13 @@ async def main():
         }
         
         is_translation_running = True
+        last_heartbeat = time.time()  # 再次更新心跳
         
-        print("所有翻译会话已启动...")
-        print(f"中文原音广播到房间: {ROOM_ZH}")
-        print(f"韩文翻译广播到房间: {ROOM_KR}")
-        print(f"越南文翻译广播到房间: {ROOM_VN}")
-        print("翻译服务正在后台运行...")
+        logger.info("所有翻译会话已启动...")
+        logger.info(f"中文原音广播到房间: {ROOM_ZH}")
+        logger.info(f"韩文翻译广播到房间: {ROOM_KR}")
+        logger.info(f"越南文翻译广播到房间: {ROOM_VN}")
+        logger.info("翻译服务正在后台运行...")
         
         # 保持会话运行
         await asyncio.gather(
@@ -297,7 +350,7 @@ async def main():
         )
         
     except Exception as e:
-        print(f"翻译服务启动失败: {e}")
+        logger.exception(f"翻译服务启动失败: %s", e)
         is_translation_running = False
     finally:
         # 关闭所有会话
@@ -308,14 +361,18 @@ async def shutdown_translation_service():
     global is_translation_running, translation_sessions
     
     if translation_sessions:
-        print("正在关闭翻译会话...")
-        await asyncio.gather(
-            *[session.close() for session in translation_sessions.values()],
-            return_exceptions=True
-        )
-        translation_sessions.clear()
+        logger.info("⚙️ 正在关闭翻译会话...")
+        try:
+            await asyncio.gather(
+                *[session.close() for session in translation_sessions.values()],
+                return_exceptions=True
+            )
+            translation_sessions.clear()
+        except Exception as e:
+            logger.exception("关闭翻译会话时出错: %s", e)
     
     is_translation_running = False
+    logger.info("⚙️ Worker shutdown")
 
 # ⚙️ Main entry point
 if __name__ == "__main__":
