@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时翻译广播 - Real-time Translation Broadcast</title>
+    <!-- ⚙️ 引入 LiveKit 客户端 SDK -->
+    <script src="https://unpkg.com/livekit-client@2.0.0/dist/livekit-client.umd.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .language-selector {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .language-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 3px solid transparent;
+            min-width: 250px;
+        }
+
+        .language-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .language-card.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .language-card .flag {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .language-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .language-card p {
+            font-size: 1rem;
+            opacity: 0.8;
+            margin-bottom: 20px;
+        }
+
+        .connect-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .connect-btn:hover {
+            background: #5a6fd8;
+            transform: scale(1.05);
+        }
+
+        .language-card.selected .connect-btn {
+            background: white;
+            color: #667eea;
+        }
+
+        .broadcast-area {
+            padding: 40px 30px;
+            display: none;
+        }
+
+        .broadcast-area.active {
+            display: block;
+        }
+
+        .broadcast-control {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .volume-control {
+            margin: 20px 0;
+        }
+
+        .volume-slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #e0e0e0;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin: 20px 0;
+            font-size: 1.1rem;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e74c3c;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #2ecc71;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle-area {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 10px;
+            min-height: 120px;
+            font-size: 1.2rem;
+            line-height: 1.6;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .subtitle-text {
+            transition: all 0.3s ease;
+            opacity: 1;
+        }
+
+        .subtitle-text.fade-in {
+            animation: subtitleFadeIn 0.5s ease-in-out;
+        }
+
+        .subtitle-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .subtitle-toggle {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .subtitle-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle-toggle.active {
+            background: #667eea;
+        }
+
+        .subtitle-size-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+        }
+
+        .size-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .size-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* ⚙️ 添加LiveKit音频可视化样式 */
+        .audio-visualizer {
+            margin-top: 20px;
+            height: 60px;
+            width: 100%;
+            background: rgba(0,0,0,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .audio-visualizer-label {
+            position: absolute;
+            top: 5px;
+            left: 10px;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .audio-bars {
+            display: flex;
+            height: 100%;
+            align-items: flex-end;
+            justify-content: space-between;
+            padding: 0 5px;
+        }
+
+        .audio-bar {
+            width: 5px;
+            background: #667eea;
+            margin: 0 2px;
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+
+        /* ⚙️ 添加连接表单样式 */
+        .connection-form {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        @keyframes subtitleFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .language-selector {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .language-card {
+                min-width: 280px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="back-btn" onclick="showLanguageSelector()" style="display: none;" id="backBtn">← 返回</button>
+            <h1>实时翻译广播</h1>
+            <p>Real-time Translation Broadcast Service</p>
+        </div>
+
+        <div class="language-selector" id="languageSelector">
+            <div class="language-card" data-lang="zh" onclick="selectLanguage('zh')">
+                <span class="flag">🇨🇳</span>
+                <h3>中文原音</h3>
+                <p>Chinese Original Audio</p>
+                <button class="connect-btn">连接广播</button>
+            </div>
+
+            <div class="language-card" data-lang="kr" onclick="selectLanguage('kr')">
+                <span class="flag">🇰🇷</span>
+                <h3>한국어 번역</h3>
+                <p>Korean Translation</p>
+                <button class="connect-btn">연결하기</button>
+            </div>
+
+            <div class="language-card" data-lang="vn" onclick="selectLanguage('vn')">
+                <span class="flag">🇻🇳</span>
+                <h3>Tiếng Việt</h3>
+                <p>Vietnamese Translation</p>
+                <button class="connect-btn">Kết nối</button>
+            </div>
+        </div>
+
+        <div class="broadcast-area" id="broadcastArea">
+            <div class="broadcast-control">
+                <!-- ⚙️ LiveKit连接表单 -->
+                <div class="connection-form" id="connectionForm">
+                    <div class="form-group">
+                        <label for="livekitUrl">LiveKit服务器URL</label>
+                        <input type="text" id="livekitUrl" placeholder="wss://your-livekit-server.com" value="wss://your-livekit-server.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="roomName">房间名称</label>
+                        <input type="text" id="roomName" placeholder="room_zh/room_kr/room_vn">
+                    </div>
+                    <div class="form-group">
+                        <label for="token">LiveKit Room Token</label>
+                        <input type="text" id="token" placeholder="输入由后端生成的Room Token">
+                    </div>
+                </div>
+
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">未连接</span>
+                </div>
+                
+                <div class="volume-control">
+                    <label for="volumeSlider">音量控制 Volume Control</label>
+                    <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="70">
+                    <span id="volumeValue">70%</span>
+                </div>
+
+                <button class="connect-btn" onclick="toggleConnection()" id="connectionBtn">
+                    连接
+                </button>
+
+                <!-- ⚙️ 添加音频可视化组件 -->
+                <div class="audio-visualizer" id="micVisualizer">
+                    <div class="audio-visualizer-label">麦克风输入</div>
+                    <div class="audio-bars" id="micBars"></div>
+                </div>
+                
+                <div class="audio-visualizer" id="speakerVisualizer">
+                    <div class="audio-visualizer-label">翻译音频输出</div>
+                    <div class="audio-bars" id="speakerBars"></div>
+                </div>
+
+                <!-- ⚙️ 添加字幕显示区域 -->
+                <div class="subtitle-area">
+                    <div class="subtitle-text" id="subs-kr">
+                        <div style="text-align: center; opacity: 0.7;">
+                            韩文字幕将在此处显示...<br>
+                            Korean subtitles will appear here...
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="subtitle-area" style="margin-top: 10px;">
+                    <div class="subtitle-text" id="subs-vn">
+                        <div style="text-align: center; opacity: 0.7;">
+                            越南文字幕将在此处显示...<br>
+                            Vietnamese subtitles will appear here...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="subtitle-controls">
+                    <button class="subtitle-toggle active" onclick="toggleSubtitles()" id="subtitleToggle">
+                        字幕开启
+                    </button>
+                    <div class="subtitle-size-control">
+                        <button class="size-btn" onclick="changeSubtitleSize(-1)">−</button>
+                        <span>字体大小</span>
+                        <button class="size-btn" onclick="changeSubtitleSize(1)">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ⚙️ 从LiveKit客户端SDK导入所需的类
+        const { Room, RoomEvent, LocalTrack, RemoteTrack, DataPacket_Kind, ConnectionState } = LivekitClient;
+        
+        let currentLanguage = null;
+        let isConnected = false;
+        let subtitlesEnabled = true;
+        let subtitleSize = 1.2; // rem
+        
+        // ⚙️ LiveKit相关变量
+        let room = null;
+        let localAudioTrack = null;
+        let microphoneVisualizer = null;
+        let speakerVisualizer = null;
+        let roomMap = {
+            'zh': 'room_zh',
+            'kr': 'room_kr',
+            'vn': 'room_vn'
+        };
+
+        function selectLanguage(lang) {
+            currentLanguage = lang;
+            
+            // 更新选中状态
+            document.querySelectorAll('.language-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.querySelector(`[data-lang="${lang}"]`).classList.add('selected');
+            
+            // 设置默认房间名
+            document.getElementById('roomName').value = roomMap[lang];
+            
+            // 显示广播区域
+            setTimeout(() => {
+                document.getElementById('languageSelector').style.display = 'none';
+                document.getElementById('broadcastArea').classList.add('active');
+                document.getElementById('backBtn').style.display = 'block';
+            }, 300);
+        }
+
+        function showLanguageSelector() {
+            document.getElementById('languageSelector').style.display = 'flex';
+            document.getElementById('broadcastArea').classList.remove('active');
+            document.getElementById('backBtn').style.display = 'none';
+            
+            // 断开连接
+            if (isConnected) {
+                disconnectFromLiveKit();
+            }
+        }
+
+        // ⚙️ 连接到LiveKit房间
+        async function connectToLiveKit() {
+            try {
+                updateStatus('正在连接...', false);
+                
+                const wsURL = document.getElementById('livekitUrl').value;
+                const token = document.getElementById('token').value;
+                
+                if (!wsURL || !token) {
+                    alert('请输入LiveKit服务器URL和Room Token');
+                    updateStatus('未连接', false);
+                    return;
+                }
+                
+                // ⚙️ 创建LiveKit房间实例
+                room = new Room();
+                
+                // ⚙️ 监听房间事件
+                setupRoomEventListeners();
+                
+                // ⚙️ Connect to LiveKit room
+                await room.connect(wsURL, token);
+                console.log('已连接到LiveKit房间:', room.name);
+                
+                // ⚙️ 获取麦克风权限并发布本地音频
+                await publishLocalAudio();
+                
+                // ⚙️ 创建音频可视化组件
+                createAudioVisualizers();
+                
+                isConnected = true;
+                updateStatus('已连接', true);
+                document.getElementById('connectionBtn').textContent = '断开连接';
+                document.getElementById('connectionForm').style.display = 'none';
+                
+            } catch (error) {
+                console.error('LiveKit连接错误:', error);
+                updateStatus('连接失败', false);
+                alert(`连接失败: ${error.message}`);
+            }
+        }
+        
+        // ⚙️ 设置房间事件监听器
+        function setupRoomEventListeners() {
+            // 监听参与者发布的音轨
+            room.on(RoomEvent.ParticipantTrackPublished, async (trackPublication, participant) => {
+                console.log(`参与者 ${participant.identity} 发布了音轨:`, trackPublication);
+                
+                // 自动订阅音轨
+                if (trackPublication.kind === 'audio') {
+                    const track = await trackPublication.track;
+                    if (track) {
+                        // 为音轨创建音频元素
+                        const audioElement = new Audio();
+                        track.attach(audioElement);
+                        audioElement.play();
+                        console.log(`正在播放 ${participant.identity} 的音频`);
+                        
+                        // 更新音频可视化
+                        if (speakerVisualizer) {
+                            speakerVisualizer.setTrack(track);
+                        }
+                    }
+                }
+            });
+            
+            // 监听数据消息（字幕）
+            room.on(RoomEvent.DataReceived, (payload, participant) => {
+                try {
+                    const data = JSON.parse(new TextDecoder().decode(payload));
+                    console.log('收到数据消息:', data);
+                    
+                    // 处理字幕数据
+                    if (data.type === 'subtitle') {
+                        if (data.lang === 'kr') {
+                            updateSubtitle('subs-kr', data.text);
+                        } else if (data.lang === 'vn') {
+                            updateSubtitle('subs-vn', data.text);
+                        }
+                    }
+                } catch (e) {
+                    console.error('解析数据消息错误:', e);
+                }
+            });
+            
+            // 监听连接状态变化
+            room.on(RoomEvent.ConnectionStateChanged, (state) => {
+                console.log('连接状态变化:', state);
+                if (state === ConnectionState.Disconnected) {
+                    updateStatus('已断开连接', false);
+                    isConnected = false;
+                    document.getElementById('connectionBtn').textContent = '连接';
+                    document.getElementById('connectionForm').style.display = 'block';
+                }
+            });
+        }
+        
+        // ⚙️ 发布本地音频
+        async function publishLocalAudio() {
+            try {
+                // 获取麦克风权限
+                const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log('已获取麦克风权限');
+                
+                // 创建本地音轨
+                localAudioTrack = LocalTrack.createAudioTrack('microphone', mediaStream.getAudioTracks()[0]);
+                
+                // 发布本地音轨到房间
+                await room.localParticipant.publishTrack(localAudioTrack);
+                console.log('本地音频已发布');
+                
+                return localAudioTrack;
+            } catch (error) {
+                console.error('获取麦克风权限失败:', error);
+                alert('无法访问麦克风: ' + error.message);
+                throw error;
+            }
+        }
+        
+        // ⚙️ 创建音频可视化组件
+        function createAudioVisualizers() {
+            // 创建麦克风可视化
+            createBarVisualizer('micBars', 20);
+            
+            // 创建扬声器可视化
+            createBarVisualizer('speakerBars', 20);
+            
+            // 开始音频可视化动画
+            startAudioVisualization();
+        }
+        
+        // ⚙️ 创建条形可视化器
+        function createBarVisualizer(elementId, barCount) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+            
+            for (let i = 0; i < barCount; i++) {
+                const bar = document.createElement('div');
+                bar.className = 'audio-bar';
+                bar.style.height = '5px';
+                container.appendChild(bar);
+            }
+        }
+        
+        // ⚙️ 开始音频可视化动画
+        function startAudioVisualization() {
+            // 模拟音频可视化效果
+            function updateBars(elementId) {
+                const bars = document.querySelectorAll(`#${elementId} .audio-bar`);
+                bars.forEach(bar => {
+                    const height = Math.floor(Math.random() * 50) + 5;
+                    bar.style.height = `${height}px`;
+                });
+            }
+            
+            // 如果已连接，每100ms更新一次可视化
+            if (isConnected) {
+                setInterval(() => updateBars('micBars'), 100);
+                setInterval(() => updateBars('speakerBars'), 100);
+            }
+        }
+
+        // ⚙️ 断开LiveKit连接
+        async function disconnectFromLiveKit() {
+            if (room) {
+                // 停止本地音轨
+                if (localAudioTrack) {
+                    localAudioTrack.stop();
+                }
+                
+                // 断开房间连接
+                await room.disconnect();
+                room = null;
+            }
+            
+            isConnected = false;
+            updateStatus('已断开连接', false);
+            document.getElementById('connectionBtn').textContent = '连接';
+            document.getElementById('connectionForm').style.display = 'block';
+            
+            // 清空字幕
+            updateSubtitle('subs-kr', '韩文字幕将在此处显示...<br>Korean subtitles will appear here...');
+            updateSubtitle('subs-vn', '越南文字幕将在此处显示...<br>Vietnamese subtitles will appear here...');
+        }
+
+        function toggleConnection() {
+            if (isConnected) {
+                disconnectFromLiveKit();
+            } else {
+                connectToLiveKit();
+            }
+        }
+
+        function updateStatus(text, connected) {
+            document.getElementById('statusText').textContent = text;
+            const dot = document.getElementById('statusDot');
+            if (connected) {
+                dot.classList.add('connected');
+            } else {
+                dot.classList.remove('connected');
+            }
+        }
+        
+        function updateSubtitle(elementId, text) {
+            if (!subtitlesEnabled) return;
+            
+            const subtitleElement = document.getElementById(elementId);
+            subtitleElement.className = 'subtitle-text fade-in';
+            subtitleElement.innerHTML = text;
+        }
+
+        function toggleSubtitles() {
+            subtitlesEnabled = !subtitlesEnabled;
+            const toggle = document.getElementById('subtitleToggle');
+            
+            if (subtitlesEnabled) {
+                toggle.textContent = '字幕开启';
+                toggle.classList.add('active');
+                document.getElementById('subs-kr').style.opacity = '1';
+                document.getElementById('subs-vn').style.opacity = '1';
+            } else {
+                toggle.textContent = '字幕关闭';
+                toggle.classList.remove('active');
+                document.getElementById('subs-kr').style.opacity = '0.5';
+                document.getElementById('subs-vn').style.opacity = '0.5';
+            }
+        }
+
+        function changeSubtitleSize(delta) {
+            subtitleSize = Math.max(0.8, Math.min(2.0, subtitleSize + delta * 0.1));
+            document.getElementById('subs-kr').style.fontSize = subtitleSize + 'rem';
+            document.getElementById('subs-vn').style.fontSize = subtitleSize + 'rem';
+        }
+
+        // 音量控制
+        document.getElementById('volumeSlider').addEventListener('input', function(e) {
+            const volume = e.target.value;
+            document.getElementById('volumeValue').textContent = volume + '%';
+            
+            // 调整音频元素音量
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(audio => {
+                audio.volume = volume / 100;
+            });
+        });
+    </script>
+</body>
+</html> 
