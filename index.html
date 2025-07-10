@@ -420,6 +420,7 @@
             <p>Real-time Translation Broadcast Service</p>
             <div class="server-status" id="serverStatus">服务状态加载中...</div>
             <div class="server-info" id="roomInfo"></div>
+            <div class="server-info">LiveKit服务：realtimetranslate-tp7yxil9.livekit.cloud</div>
             <button class="health-check-btn" id="healthCheckBtn">检查服务健康状态</button>
         </div>
 
@@ -450,10 +451,6 @@
             <div class="broadcast-control">
                 <!-- ⚙️ LiveKit连接表单 -->
                 <div class="connection-form" id="connectionForm">
-                    <div class="form-group">
-                        <label for="livekitUrl">LiveKit服务器URL</label>
-                        <input type="text" id="livekitUrl" placeholder="wss://your-livekit-server.com" value="wss://your-livekit-server.com">
-                    </div>
                     <div class="form-group">
                         <label for="roomName">房间名称</label>
                         <input type="text" id="roomName" placeholder="room_zh/room_kr/room_vn">
@@ -540,6 +537,9 @@
             'vn': 'room_vn'
         };
 
+        // ⚙️ LiveKit WebSocket URL
+        const wsURL = "wss://realtimetranslate-tp7yxil9.livekit.cloud/rtc";
+
         // ⚙️ 生成随机身份标识
         function generateRandomIdentity() {
             const randomId = Math.floor(1000 + Math.random() * 9000); // 生成1000-9999的随机数
@@ -582,14 +582,15 @@
             try {
                 updateStatus('正在连接...', false);
                 
-                const wsURL = document.getElementById('livekitUrl').value;
+                // ⚙️ Replace placeholder wsURL - 已经替换为全局常量
+                // const wsURL = document.getElementById('livekitUrl').value;
                 const roomName = document.getElementById('roomName').value;
                 
                 // 生成随机身份标识
                 const identity = generateRandomIdentity();
                 
-                if (!wsURL || !roomName) {
-                    alert('请输入LiveKit服务器URL和房间名');
+                if (!roomName) {
+                    alert('请输入房间名');
                     updateStatus('未连接', false);
                     return;
                 }
@@ -619,12 +620,16 @@
                 // ⚙️ 创建LiveKit房间实例
                 room = new Room();
                 
+                // ⚙️ 添加连接错误和断开连接事件监听器
+                room.on(RoomEvent.ConnectionError, (e) => console.error("连接错误:", e));
+                room.on(RoomEvent.Disconnected, () => console.info("已断开连接"));
+                
                 // ⚙️ 监听房间事件
                 setupRoomEventListeners();
                 
                 // ⚙️ LiveKit official connect pattern
                 await room.connect(wsURL, token);
-                console.log('已连接到LiveKit房间:', room.name);
+                console.log('✅ 已连接到房间:', room.name);
                 
                 // ⚙️ 获取麦克风权限并发布本地音频
                 await publishLocalAudio();
