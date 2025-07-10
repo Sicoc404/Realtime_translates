@@ -2,7 +2,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from livekit import agents
-from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
+from livekit.agents import Worker, WorkerOptions, run_app  # ⚙️ Updated import for livekit v1.x
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 # ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
 
@@ -26,13 +26,20 @@ ROOM_ZH = "room_zh"  # 中文原音房间
 ROOM_KR = "room_kr"  # 韩文翻译房间
 ROOM_VN = "room_vn"  # 越南文翻译房间
 
+async def entrypoint_function():
+    """
+    LiveKit Worker 入口点函数
+    此函数作为 WorkerOptions 的第一个位置参数
+    """
+    pass  # 这个函数只是为了作为入口点，实际逻辑在main中
+
 async def main():
-    # ⚙️ Added WorkerOptions for livekit v1.x
+    # ⚙️ Updated WorkerOptions call for livekit v1.x (entrypoint as first positional argument)
     opts = WorkerOptions(
-        agent=None,  # 不使用自动代理功能，我们手动管理会话
+        entrypoint_function,  # 传入口函数作为第一个位置参数
         api_key=LIVEKIT_API_KEY,
         api_secret=LIVEKIT_API_SECRET,
-        host=LIVEKIT_URL
+        ws_url=LIVEKIT_URL  # 使用ws_url而不是host
     )
     
     # 初始化工作线程，使用WorkerOptions
@@ -111,4 +118,5 @@ async def main():
         print("翻译服务已关闭")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    # ⚙️ Using run_app instead of asyncio.run() for livekit v1.x compatibility
+    run_app(main) 
