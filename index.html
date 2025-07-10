@@ -458,10 +458,6 @@
                         <label for="roomName">房间名称</label>
                         <input type="text" id="roomName" placeholder="room_zh/room_kr/room_vn">
                     </div>
-                    <div class="form-group">
-                        <label for="token">LiveKit Room Token</label>
-                        <input type="text" id="token" placeholder="输入由后端生成的Room Token">
-                    </div>
                 </div>
 
                 <div class="status-indicator">
@@ -527,6 +523,7 @@
         // ⚙️ 从LiveKit客户端SDK导入所需的类
         const { Room, RoomEvent, LocalTrack, RemoteTrack, DataPacket_Kind, ConnectionState } = LivekitClient;
         
+        // 全局变量
         let currentLanguage = null;
         let isConnected = false;
         let subtitlesEnabled = true;
@@ -542,6 +539,12 @@
             'kr': 'room_kr',
             'vn': 'room_vn'
         };
+
+        // ⚙️ 生成随机身份标识
+        function generateRandomIdentity() {
+            const randomId = Math.floor(1000 + Math.random() * 9000); // 生成1000-9999的随机数
+            return `user-${randomId}`;
+        }
 
         function selectLanguage(lang) {
             currentLanguage = lang;
@@ -580,13 +583,38 @@
                 updateStatus('正在连接...', false);
                 
                 const wsURL = document.getElementById('livekitUrl').value;
-                const token = document.getElementById('token').value;
+                const roomName = document.getElementById('roomName').value;
                 
-                if (!wsURL || !token) {
-                    alert('请输入LiveKit服务器URL和Room Token');
+                // 生成随机身份标识
+                const identity = generateRandomIdentity();
+                
+                if (!wsURL || !roomName) {
+                    alert('请输入LiveKit服务器URL和房间名');
                     updateStatus('未连接', false);
                     return;
                 }
+                
+                // ⚙️ Fetch token before connect
+                const tokenResponse = await fetch('/token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        roomName: roomName,
+                        identity: identity
+                    })
+                });
+                
+                if (!tokenResponse.ok) {
+                    const errorData = await tokenResponse.json();
+                    throw new Error(`获取Token失败: ${errorData.error || tokenResponse.statusText}`);
+                }
+                
+                const tokenData = await tokenResponse.json();
+                const token = tokenData.token;
+                
+                console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}`);
                 
                 // ⚙️ 创建LiveKit房间实例
                 room = new Room();
@@ -594,7 +622,7 @@
                 // ⚙️ 监听房间事件
                 setupRoomEventListeners();
                 
-                // ⚙️ Connect to LiveKit room
+                // ⚙️ LiveKit official connect pattern
                 await room.connect(wsURL, token);
                 console.log('已连接到LiveKit房间:', room.name);
                 
@@ -605,7 +633,7 @@
                 createAudioVisualizers();
                 
                 isConnected = true;
-                updateStatus('已连接', true);
+                updateStatus('已连接 (身份: ' + identity + ')', true);
                 document.getElementById('connectionBtn').textContent = '断开连接';
                 document.getElementById('connectionForm').style.display = 'none';
                 
@@ -809,15 +837,27 @@
         }
 
         // 音量控制
-        document.getElementById('volumeSlider').addEventListener('input', function(e) {
-            const volume = e.target.value;
-            document.getElementById('volumeValue').textContent = volume + '%';
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化音量控制
+            const volumeSlider = document.getElementById('volumeSlider');
+            if (volumeSlider) {
+                volumeSlider.addEventListener('input', function(e) {
+                    const volume = e.target.value;
+                    document.getElementById('volumeValue').textContent = volume + '%';
+                    
+                    // 调整音频元素音量
+                    const audioElements = document.querySelectorAll('audio');
+                    audioElements.forEach(audio => {
+                        audio.volume = volume / 100;
+                    });
+                });
+            }
             
-            // 调整音频元素音量
-            const audioElements = document.querySelectorAll('audio');
-            audioElements.forEach(audio => {
-                audio.volume = volume / 100;
-            });
+            // 初始化连接按钮
+            const connectionBtn = document.getElementById('connectionBtn');
+            if (connectionBtn) {
+                connectionBtn.addEventListener('click', toggleConnection);
+            }
         });
     </script>
 </body>
