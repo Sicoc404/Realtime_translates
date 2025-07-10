@@ -1,17 +1,18 @@
 import asyncio
 import os
+import threading
+from contextlib import asynccontextmanager
+from typing import Dict, Any
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import JSONResponse, HTMLResponse
+import uvicorn
+
 from livekit import agents
 from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
 from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
 from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
-# ⚙️ Removed audio plugin import — not required in livekit-agents v1.x
-
-# ⚙️ Render health check setup
-from fastapi import FastAPI, BackgroundTasks
-from fastapi.responses import JSONResponse, HTMLResponse
-import uvicorn
-import threading
 
 from session_factory import create_session
 from translation_prompts import KR_PROMPT, VN_PROMPT
@@ -33,16 +34,44 @@ ROOM_ZH = "room_zh"  # 中文原音房间
 ROOM_KR = "room_kr"  # 韩文翻译房间
 ROOM_VN = "room_vn"  # 越南文翻译房间
 
-# ⚙️ Render health check setup - FastAPI应用实例
-app = FastAPI(title="Real-time Translation Service", version="1.0.0")
-
-# ⚙️ Render health check setup - 全局变量存储会话状态
+# ⚙️ 全局变量存储会话状态
 translation_sessions = {}
 is_translation_running = False
+worker_task = None
 
+# ⚙️ FastAPI lifespan setup for background worker
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ⚙️ Startup: launch background worker
+    global worker_task
+    worker_task = asyncio.create_task(run_worker())
+    print("FastAPI 服务启动中...")
+    print("正在后台启动翻译服务...")
+    
+    yield  # 服务运行中...
+    
+    # ⚙️ Shutdown: cleanup resources
+    print("正在关闭翻译服务...")
+    await shutdown_translation_service()
+    if worker_task and not worker_task.done():
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+    print("翻译服务已关闭")
+
+# ⚙️ Initialize FastAPI with lifespan
+app = FastAPI(
+    title="Real-time Translation Service", 
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# ⚙️ Health and UI routes
 @app.get("/", response_class=HTMLResponse)
 async def homepage():
-    # ⚙️ Root homepage added for UI access
+    """根路由，返回一个简单的HTML响应"""
     return """
     <html>
         <head>
@@ -84,7 +113,7 @@ async def homepage():
         <body>
             <h1>实时翻译服务 ✔️</h1>
             <div class="status">
-                <p>服务状态: 运行中</p>
+                <p>🟢 实时翻译服务运行中</p>
             </div>
             <p>
                 这是一个基于LiveKit的实时语音翻译系统，可以将中文语音翻译成韩文和越南文。
@@ -121,10 +150,32 @@ async def get_status():
         }
     )
 
+# ⚙️ Startup background worker
+async def run_worker():
+    """在后台运行LiveKit Worker"""
+    try:
+        # 创建WorkerOptions
+        opts = WorkerOptions(
+            entrypoint_function,  # 传入口函数作为第一个位置参数
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            ws_url=LIVEKIT_URL  # 使用ws_url而不是host
+        )
+        
+        # 启动翻译服务
+        await entrypoint_function()
+        
+        # 注意：这里不直接调用run_app(opts)，因为它会阻塞当前协程
+        # 我们已经在entrypoint_function中实现了主要逻辑
+        
+    except Exception as e:
+        print(f"启动翻译服务失败: {e}")
+        raise
+
 async def entrypoint_function():
     """
     LiveKit Worker 入口点函数
-    此函数作为 WorkerOptions 的第一个位置参数，包含主要应用逻辑
+    此函数包含主要应用逻辑
     """
     # 调用主函数
     await main()
@@ -134,13 +185,12 @@ async def main():
     global is_translation_running, translation_sessions
     
     try:
-        # ⚙️ Worker will be created by run_app in the main block
-        
         # 设置字幕处理器
         kr_subtitle_handler, vn_subtitle_handler = setup_subtitle_handlers()
         
         # 启动 FastAPI 服务器（如果安装了FastAPI）
-        start_api()
+        # 注意：我们不再需要在这里启动FastAPI，因为它已经作为主应用启动
+        # start_api()
         
         # 创建三个不同的会话
         print("正在启动翻译会话...")
@@ -153,7 +203,7 @@ async def main():
             livekit_url=LIVEKIT_URL,
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
+            openai_api_key=OPENAI_API_KEY,
             text_callback=None  # 原音不需要文本回调
         )
         
@@ -165,7 +215,7 @@ async def main():
             livekit_url=LIVEKIT_URL,
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
+            openai_api_key=OPENAI_API_KEY,
             text_callback=kr_subtitle_handler
         )
         
@@ -177,7 +227,7 @@ async def main():
             livekit_url=LIVEKIT_URL,
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,  # ⚙️ 传递OpenAI API密钥
+            openai_api_key=OPENAI_API_KEY,
             text_callback=vn_subtitle_handler
         )
         
@@ -208,77 +258,28 @@ async def main():
         is_translation_running = False
     finally:
         # 关闭所有会话
-        if translation_sessions:
-            print("正在关闭翻译服务...")
-            await asyncio.gather(
-                *[session.close() for session in translation_sessions.values()],
-                return_exceptions=True
-            )
-            translation_sessions.clear()
-        
-        is_translation_running = False
-        print("翻译服务已关闭")
+        await shutdown_translation_service()
 
-# ⚙️ Render health check setup - 后台任务启动翻译服务
-async def start_translation_service():
-    """后台任务：启动翻译服务"""
-    try:
-        # ⚙️ Using run_app(opts) from cli module for livekit v1.x compatibility
-        opts = WorkerOptions(
-            entrypoint_function,  # 传入口函数作为第一个位置参数
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            ws_url=LIVEKIT_URL  # 使用ws_url而不是host
-        )
-        
-        # 在单独的线程中运行 LiveKit worker
-        def run_worker():
-            try:
-                run_app(opts)
-            except Exception as e:
-                print(f"LiveKit Worker 运行错误: {e}")
-        
-        # 启动 worker 线程
-        worker_thread = threading.Thread(target=run_worker, daemon=True)
-        worker_thread.start()
-        
-    except Exception as e:
-        print(f"启动翻译服务失败: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时的事件处理"""
-    print("FastAPI 服务启动中...")
-    print("正在后台启动翻译服务...")
-    
-    # 在后台启动翻译服务
-    asyncio.create_task(start_translation_service())
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的事件处理"""
+async def shutdown_translation_service():
+    """关闭所有翻译会话"""
     global is_translation_running, translation_sessions
     
-    print("正在关闭翻译服务...")
-    
-    # 关闭所有翻译会话
     if translation_sessions:
-        for session in translation_sessions.values():
-            try:
-                await session.close()
-            except Exception as e:
-                print(f"关闭会话时出错: {e}")
+        print("正在关闭翻译会话...")
+        await asyncio.gather(
+            *[session.close() for session in translation_sessions.values()],
+            return_exceptions=True
+        )
+        translation_sessions.clear()
     
-    translation_sessions.clear()
     is_translation_running = False
-    print("翻译服务已关闭")
 
-# ⚙️ Render health check setup - 主程序入口
+# ⚙️ Main entry point
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
-        port=int(os.getenv("PORT", "5000")),
+        port=int(os.getenv("PORT", "10000")),
         reload=False  # 避免在生产环境中使用reload
     )
