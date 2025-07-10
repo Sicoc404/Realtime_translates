@@ -438,7 +438,7 @@
     <div class="container">
         <div class="header">
             <button class="back-btn" onclick="showLanguageSelector()" style="display: none;" id="backBtn">← 返回</button>
-            <button class="speaker-btn" onclick="enterSpeakerMode()" id="speakerBtn">🎤 讲者模式</button>
+            <button class="speaker-btn" onclick="enterSpeakerMode()" id="speakerBtn">🎤 Speaker</button>
             <h1>实时翻译广播</h1>
             <p>Real-time Translation Broadcast Service</p>
             <div class="server-status" id="serverStatus">服务状态加载中...</div>
@@ -596,10 +596,16 @@
                 document.getElementById('backBtn').style.display = 'block';
                 document.getElementById('speakerBtn').style.display = 'none';
                 
-                // 根据模式显示角色信息
+                // 如果是讲者模式，自动连接
                 if (isSpeakerMode) {
+                    // 显示角色信息
                     document.getElementById('roleGroup').style.display = 'block';
                     document.getElementById('role').value = 'speaker';
+                    
+                    // 自动连接
+                    setTimeout(() => {
+                        connectToLiveKit();
+                    }, 500);
                 }
             }, 300);
         }
@@ -611,7 +617,15 @@
             document.getElementById('speakerBtn').style.display = 'block';
             
             // 重置模式
-            isSpeakerMode = false;
+            if (!isSpeakerMode) {
+                // 如果不是讲者模式，重置按钮样式
+                document.getElementById('speakerBtn').style.backgroundColor = '';
+                document.getElementById('speakerBtn').style.color = '';
+            } else {
+                // 如果是从讲者模式返回，保持按钮高亮
+                document.getElementById('speakerBtn').style.backgroundColor = '#667eea';
+                document.getElementById('speakerBtn').style.color = 'white';
+            }
             document.getElementById('roleGroup').style.display = 'none';
             
             // 断开连接
@@ -623,8 +637,25 @@
         // ⚙️ 进入讲者模式
         function enterSpeakerMode() {
             isSpeakerMode = true;
-            // 不自动选择语言，让用户选择
             console.log('已切换到讲者模式');
+            
+            // 提示用户
+            alert('已进入Speaker模式，请选择一个语言房间');
+            
+            // 如果已经在语言选择页面，则更新UI显示
+            if (document.getElementById('languageSelector').style.display === 'flex') {
+                // 已经在语言选择页面，只需更新UI
+                document.getElementById('speakerBtn').style.backgroundColor = '#667eea';
+                document.getElementById('speakerBtn').style.color = 'white';
+            } else {
+                // 如果在其他页面，先断开连接，然后回到语言选择页面
+                if (isConnected) {
+                    disconnectFromLiveKit();
+                }
+                showLanguageSelector();
+                document.getElementById('speakerBtn').style.backgroundColor = '#667eea';
+                document.getElementById('speakerBtn').style.color = 'white';
+            }
         }
 
         // ⚙️ 连接到LiveKit房间 - 严格按照官方文档结构
