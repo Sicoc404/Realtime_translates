@@ -518,7 +518,7 @@
 
     <script>
         // ⚙️ 从LiveKit客户端SDK导入所需的类
-        const { Room, RoomEvent, LocalTrack, RemoteTrack, DataPacket_Kind, ConnectionState } = LivekitClient;
+        const { Room, RoomEvent, RemoteTrack, DataPacket_Kind, ConnectionState, createLocalTracks, createLocalAudioTrack } = LivekitClient;
         
         // 全局变量
         let currentLanguage = null;
@@ -707,12 +707,10 @@
         // ⚙️ 发布本地音频
         async function publishLocalAudio() {
             try {
-                // 获取麦克风权限
-                const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // ⚙️ create local audio track with official API
+                const [audioTrack] = await LivekitClient.createLocalTracks({ audio: true });
+                localAudioTrack = audioTrack;
                 console.log('已获取麦克风权限');
-                
-                // 创建本地音轨
-                localAudioTrack = LocalTrack.createAudioTrack('microphone', mediaStream.getAudioTracks()[0]);
                 
                 // 发布本地音轨到房间
                 await room.localParticipant.publishTrack(localAudioTrack);
