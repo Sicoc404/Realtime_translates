@@ -676,7 +676,7 @@
                     return;
                 }
                 
-                // ⚙️ LiveKit official connection pattern
+                // ⚙️ LiveKit official connection pattern - 创建房间实例
                 room = new Room();
                 
                 // ⚙️ 添加连接错误和断开连接事件监听器
@@ -686,52 +686,81 @@
                 // ⚙️ 监听房间事件
                 setupRoomEventListeners();
                 
-                // ⚙️ Fetch token before connect
-                const tokenResponse = await fetch('/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        roomName: roomName,
-                        identity: identity
-                    })
-                });
-                
-                if (!tokenResponse.ok) {
-                    const errorData = await tokenResponse.json();
-                    throw new Error(`获取Token失败: ${errorData.error || tokenResponse.statusText}`);
+                try {
+                    // ⚙️ Fetch token before connect
+                    console.log("正在获取连接Token...");
+                    const tokenResponse = await fetch('/token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            roomName: roomName,
+                            identity: identity
+                        })
+                    });
+                    
+                    if (!tokenResponse.ok) {
+                        const errorData = await tokenResponse.json();
+                        throw new Error(`获取Token失败: ${errorData.error || tokenResponse.statusText}`);
+                    }
+                    
+                    const tokenData = await tokenResponse.json();
+                    const token = tokenData.token;
+                    
+                    console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}, 角色: ${role}`);
+                    
+                    // ⚙️ LiveKit official connect pattern - 先连接到房间
+                    console.log("正在连接到LiveKit房间...");
+                    await room.connect(wsURL, token);
+                    console.log("✅ 已连接到LiveKit房间");
+                    
+                    // ⚙️ create and publish track after connection - 确保连接成功后再发布轨道
+                    if (role === "speaker") {
+                        console.log("讲者模式：正在请求麦克风权限...");
+                        const [audioTrack] = await createLocalTracks({ audio: true });
+                        localAudioTrack = audioTrack;
+                        
+                        // 确保房间已连接后再发布
+                        if (room.state === 'connected') {
+                            await room.localParticipant.publishTrack(audioTrack);
+                            console.log("📢 讲者轨道已发布");
+                        } else {
+                            throw new Error("房间未连接，无法发布音频轨道");
+                        }
+                    }
+                    
+                    // ⚙️ 创建音频可视化组件
+                    createAudioVisualizers();
+                    
+                    isConnected = true;
+                    updateStatus(`已连接 (身份: ${identity}, 角色: ${role === 'speaker' ? '讲者' : '观众'})`, true);
+                    document.getElementById('connectionBtn').textContent = '断开连接';
+                    document.getElementById('connectionForm').style.display = 'none';
+                    
+                } catch (connectionError) {
+                    // 特定处理连接和发布错误
+                    console.error('连接或发布失败:', connectionError);
+                    
+                    // 清理资源
+                    if (localAudioTrack) {
+                        localAudioTrack.stop();
+                        localAudioTrack = null;
+                    }
+                    
+                    if (room) {
+                        await room.disconnect().catch(e => console.error("断开连接出错:", e));
+                        room = null;
+                    }
+                    
+                    updateStatus('连接失败', false);
+                    alert(`操作失败: ${connectionError.message}`);
+                    throw connectionError; // 重新抛出以便外层catch捕获
                 }
-                
-                const tokenData = await tokenResponse.json();
-                const token = tokenData.token;
-                
-                console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}, 角色: ${role}`);
-                
-                // ⚙️ 先连接到房间
-                await room.connect(wsURL, token);
-                console.log("✅ 已连接");
-                
-                // ⚙️ create and publish track after connection
-                if (role === "speaker") {
-                    const [audioTrack] = await createLocalTracks({ audio: true });
-                    localAudioTrack = audioTrack;
-                    await room.localParticipant.publishTrack(audioTrack);
-                    console.log("📢 讲者轨道已发布");
-                }
-                
-                // ⚙️ 创建音频可视化组件
-                createAudioVisualizers();
-                
-                isConnected = true;
-                updateStatus(`已连接 (身份: ${identity}, 角色: ${role === 'speaker' ? '讲者' : '观众'})`, true);
-                document.getElementById('connectionBtn').textContent = '断开连接';
-                document.getElementById('connectionForm').style.display = 'none';
                 
             } catch (error) {
-                console.error('连接或发布失败:', error);
+                console.error('连接过程中出现错误:', error);
                 updateStatus('连接失败', false);
-                alert(`操作失败: ${error.message}`);
             }
         }
         
