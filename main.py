@@ -9,7 +9,7 @@ from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
 
 # ⚙️ Render health check setup
 from fastapi import FastAPI, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 import uvicorn
 import threading
 
@@ -39,6 +39,63 @@ app = FastAPI(title="Real-time Translation Service", version="1.0.0")
 # ⚙️ Render health check setup - 全局变量存储会话状态
 translation_sessions = {}
 is_translation_running = False
+
+@app.get("/", response_class=HTMLResponse)
+async def homepage():
+    # ⚙️ Root homepage added for UI access
+    return """
+    <html>
+        <head>
+            <title>实时翻译服务</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    line-height: 1.6;
+                }
+                h1 {
+                    color: #4a5568;
+                    border-bottom: 2px solid #e2e8f0;
+                    padding-bottom: 10px;
+                }
+                .status {
+                    background-color: #f0fff4;
+                    border-left: 4px solid #48bb78;
+                    padding: 12px;
+                    margin: 20px 0;
+                }
+                a {
+                    color: #4299e1;
+                    text-decoration: none;
+                }
+                a:hover {
+                    text-decoration: underline;
+                }
+                .links {
+                    margin-top: 30px;
+                }
+                .links a {
+                    margin-right: 15px;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>实时翻译服务 ✔️</h1>
+            <div class="status">
+                <p>服务状态: 运行中</p>
+            </div>
+            <p>
+                这是一个基于LiveKit的实时语音翻译系统，可以将中文语音翻译成韩文和越南文。
+            </p>
+            <div class="links">
+                <a href="/health">健康检查</a> | 
+                <a href="/status">服务状态</a>
+            </div>
+        </body>
+    </html>
+    """
 
 @app.get("/health")
 async def health_check():
