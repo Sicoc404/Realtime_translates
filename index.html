@@ -452,6 +452,13 @@
                 <!-- ⚙️ LiveKit连接表单 -->
                 <div class="connection-form" id="connectionForm">
                     <div class="form-group">
+                        <label for="role">角色选择</label>
+                        <select id="role" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 1rem;">
+                            <option value="speaker">🎤 讲者</option>
+                            <option value="audience">🎧 观众</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label for="roomName">房间名称</label>
                         <input type="text" id="roomName" placeholder="room_zh/room_kr/room_vn">
                     </div>
@@ -517,8 +524,8 @@
     </div>
 
     <script>
-        // ⚙️ 从LiveKit客户端SDK导入所需的类
-        const { Room, RoomEvent, RemoteTrack, DataPacket_Kind, ConnectionState, createLocalTracks, createLocalAudioTrack } = LivekitClient;
+        // ⚙️ 从LiveKit客户端SDK导入所需的类 - 按照官方文档结构
+        const { Room, RoomEvent, RemoteTrack, DataPacket_Kind, ConnectionState, createLocalTracks } = LivekitClient;
         
         // 全局变量
         let currentLanguage = null;
@@ -577,13 +584,13 @@
             }
         }
 
-        // ⚙️ 连接到LiveKit房间
+        // ⚙️ 连接到LiveKit房间 - 按照官方文档结构
         async function connectToLiveKit() {
             try {
                 updateStatus('正在连接...', false);
                 
-                // ⚙️ Replace placeholder wsURL - 已经替换为全局常量
-                // const wsURL = document.getElementById('livekitUrl').value;
+                // 获取用户选择的角色
+                const role = document.getElementById('role').value;
                 const roomName = document.getElementById('roomName').value;
                 
                 // 生成随机身份标识
@@ -594,6 +601,16 @@
                     updateStatus('未连接', false);
                     return;
                 }
+                
+                // ⚙️ LiveKit official connection pattern
+                room = new Room();
+                
+                // ⚙️ 添加连接错误和断开连接事件监听器
+                room.on(RoomEvent.ConnectionError, (e) => console.error("连接错误:", e));
+                room.on(RoomEvent.Disconnected, () => console.info("已断开连接"));
+                
+                // ⚙️ 监听房间事件
+                setupRoomEventListeners();
                 
                 // ⚙️ Fetch token before connect
                 const tokenResponse = await fetch('/token', {
@@ -615,30 +632,25 @@
                 const tokenData = await tokenResponse.json();
                 const token = tokenData.token;
                 
-                console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}`);
+                console.log(`已获取Token，身份: ${identity}, 房间: ${roomName}, 角色: ${role}`);
                 
-                // ⚙️ 创建LiveKit房间实例
-                room = new Room();
+                // ⚙️ create local audio track for speaker only
+                if (role === "speaker") {
+                    const [audioTrack] = await createLocalTracks({ audio: true });
+                    localAudioTrack = audioTrack;
+                    await room.localParticipant.publishTrack(audioTrack);
+                    console.log('✅ 讲者模式：已发布本地音频轨道');
+                }
                 
-                // ⚙️ 添加连接错误和断开连接事件监听器
-                room.on(RoomEvent.ConnectionError, (e) => console.error("连接错误:", e));
-                room.on(RoomEvent.Disconnected, () => console.info("已断开连接"));
-                
-                // ⚙️ 监听房间事件
-                setupRoomEventListeners();
-                
-                // ⚙️ LiveKit official connect pattern
+                // ⚙️ 连接到房间
                 await room.connect(wsURL, token);
-                console.log('✅ 已连接到房间:', room.name);
-                
-                // ⚙️ 获取麦克风权限并发布本地音频
-                await publishLocalAudio();
+                console.log('✅ 已连接到房间，角色：', role);
                 
                 // ⚙️ 创建音频可视化组件
                 createAudioVisualizers();
                 
                 isConnected = true;
-                updateStatus('已连接 (身份: ' + identity + ')', true);
+                updateStatus(`已连接 (身份: ${identity}, 角色: ${role === 'speaker' ? '讲者' : '观众'})`, true);
                 document.getElementById('connectionBtn').textContent = '断开连接';
                 document.getElementById('connectionForm').style.display = 'none';
                 
@@ -703,26 +715,7 @@
                 }
             });
         }
-        
-        // ⚙️ 发布本地音频
-        async function publishLocalAudio() {
-            try {
-                // ⚙️ create local audio track with official API
-                const [audioTrack] = await LivekitClient.createLocalTracks({ audio: true });
-                localAudioTrack = audioTrack;
-                console.log('已获取麦克风权限');
-                
-                // 发布本地音轨到房间
-                await room.localParticipant.publishTrack(localAudioTrack);
-                console.log('本地音频已发布');
-                
-                return localAudioTrack;
-            } catch (error) {
-                console.error('获取麦克风权限失败:', error);
-                alert('无法访问麦克风: ' + error.message);
-                throw error;
-            }
-        }
+
         
         // ⚙️ 创建音频可视化组件
         function createAudioVisualizers() {
@@ -770,9 +763,10 @@
         // ⚙️ 断开LiveKit连接
         async function disconnectFromLiveKit() {
             if (room) {
-                // 停止本地音轨
+                // 停止本地音轨（仅讲者模式）
                 if (localAudioTrack) {
                     localAudioTrack.stop();
+                    localAudioTrack = null;
                 }
                 
                 // 断开房间连接
