@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from livekit.agents import llm
-import openai
+from livekit.plugins.openai.realtime import RealtimeModel
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ async def create_deepgram_realtime_session():
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
         # 创建RealtimeModel - 使用与session_factory.py相同的方式
-        realtime_model = openai.realtime.RealtimeModel(
+        realtime_model = RealtimeModel(
             instructions="You are a helpful AI assistant that can translate between languages.",
             model="gpt-4o-realtime-preview",
             voice="alloy",
@@ -39,33 +39,9 @@ async def create_deepgram_realtime_session():
         return session
         
     except Exception as e:
-        logger.error(f"❌ Deepgram Realtime session creation failed: {e}")
+        logger.error(f"❌ Deepgram RealtimeModel creation failed: {e}")
         logger.error(f"📋 Error details: {type(e).__name__}: {str(e)}")
         raise
 
-async def main():
-    """测试函数"""
-    try:
-        session = await create_deepgram_realtime_session()
-        logger.info("🎉 Deepgram + OpenAI Realtime session created successfully!")
-        
-        # 在这里可以添加更多的测试逻辑
-        # 例如: 测试音频输入/输出
-        
-        # 清理
-        if hasattr(session, 'aclose'):
-            await session.aclose()
-            logger.info("✅ Session closed successfully")
-            
-    except Exception as e:
-        logger.error(f"❌ Main function failed: {e}")
-
 if __name__ == "__main__":
-    # 设置日志
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    # 运行测试
-    asyncio.run(main()) 
+    asyncio.run(create_deepgram_realtime_session()) 
