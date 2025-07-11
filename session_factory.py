@@ -39,27 +39,36 @@ async def create_session(
         "name": f"{lang_code.upper()} Translator"
     }
     
-    # ⚙️ 使用新版API创建OpenAI实时模型，无需手动创建音频插件
+    # ⚙️ 使用新版API创建OpenAI实时模型，严格按照官方文档签名
+    # ⚙️ Use instructions instead of system per RealtimeModel constructor signature
     realtime_model = openai.realtime.RealtimeModel(
-        model="gpt-4o-realtime-preview",  # ⚙️ 更新为最新模型名称
-        instructions=prompt,  # ⚙️ Use instructions instead of system, per LiveKit doc
-        text_callback=text_callback,  # 如果提供了回调，处理生成的文本
-        voice="alloy",  # 设置语音模型
-        temperature=0.8,  # 设置温度参数
-        modalities=["text", "audio"],  # 指定模态
-        turn_detection="server_vad",  # 使用服务器端语音活动检测
-        api_key=openai_api_key,  # ⚙️ 添加API密钥参数
-        room_name=room_name  # ⚙️ 直接在模型中指定房间名
+        instructions=prompt,  # 系统指令，替换原来的system参数
+        voice="alloy",  # 语音模型
+        temperature=0.8,  # 温度参数
+        api_key=openai_api_key  # OpenAI API密钥
     )
     
-    # ⚙️ 新版API直接将连接参数传递给AgentSession构造函数
+    # ⚙️ 创建LiveKit代理会话
     session = AgentSession(
-        **connection_info,
-        llm=realtime_model
+        url=livekit_url,
+        api_key=api_key,
+        api_secret=api_secret,
+        identity=f"translator_{lang_code}",
+        name=f"{lang_code.upper()} Translator"
     )
+    
+    # 设置文本回调（如果提供）
+    if text_callback:
+        realtime_model.text_callback = text_callback
+    
+    # 将模型添加到会话
+    session.add_model(realtime_model)
     
     # 启动会话
     await session.start()
+    
+    # 连接到指定房间
+    await session.connect(room_name)
     
     print(f"{lang_code.upper()} 翻译会话已创建并启动")
     return session 
