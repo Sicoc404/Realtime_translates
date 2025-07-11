@@ -6,42 +6,45 @@ from translation_prompts import (
     SYSTEM_PROMPT_CHINESE, 
     SYSTEM_PROMPT_ENGLISH, 
     SYSTEM_PROMPT_SPANISH, 
-    SYSTEM_PROMPT_FRENCH
+    SYSTEM_PROMPT_FRENCH,
+    KR_PROMPT,
+    VN_PROMPT
 )
 
 logger = logging.getLogger(__name__)
 
 async def create_session(
-    target_language: str = "zh",
-    source_language: str = "en",
-    api_key: str = None,
+    lang_code: str,
+    prompt: str,
+    room_name: str,
+    livekit_url: str,
+    api_key: str,
+    api_secret: str,
+    openai_api_key: str,
+    text_callback=None,
     model: str = "gpt-4o-realtime-preview"
 ) -> llm.RealtimeSession:
     """
     创建OpenAI Realtime会话用于实时翻译
     
     Args:
-        target_language: 目标语言代码 (zh, en, es, fr)
-        source_language: 源语言代码 (zh, en, es, fr) 
-        api_key: OpenAI API密钥
+        lang_code: 语言代码 (zh, kr, vn, en, es, fr)
+        prompt: 翻译提示词
+        room_name: LiveKit房间名称
+        livekit_url: LiveKit服务器URL
+        api_key: LiveKit API密钥
+        api_secret: LiveKit API密钥
+        openai_api_key: OpenAI API密钥
+        text_callback: 文本回调函数
         model: 使用的模型名称
         
     Returns:
         RealtimeSession: 配置好的实时会话
     """
     try:
-        logger.info(f"🔧 Creating session for {source_language} -> {target_language}")
-        
-        # 选择合适的提示词
-        prompt_map = {
-            "zh": SYSTEM_PROMPT_CHINESE,
-            "en": SYSTEM_PROMPT_ENGLISH, 
-            "es": SYSTEM_PROMPT_SPANISH,
-            "fr": SYSTEM_PROMPT_FRENCH
-        }
-        
-        prompt = prompt_map.get(target_language, SYSTEM_PROMPT_ENGLISH)
-        logger.info(f"📝 Using prompt for target language: {target_language}")
+        logger.info(f"🔧 Creating session for language: {lang_code}")
+        logger.info(f"🏠 Room: {room_name}")
+        logger.info(f"📝 Using prompt: {prompt[:50]}...")
         
         # 按照LiveKit官方文档创建RealtimeModel
         # 参考: https://docs.livekit.io/reference/python/livekit/plugins/openai/realtime/realtime_model.html
@@ -53,7 +56,7 @@ async def create_session(
             modalities=["text", "audio"],
             input_audio_format="pcm16",
             output_audio_format="pcm16",
-            api_key=api_key
+            api_key=openai_api_key
         )
         
         logger.info(f"✅ RealtimeModel created successfully with model: {model}")
