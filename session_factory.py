@@ -42,8 +42,11 @@ async def create_session(
     # ⚙️ 使用新版API创建OpenAI实时模型，无需手动创建音频插件
     realtime_model = openai.realtime.RealtimeModel(
         model="gpt-4o-realtime-preview",  # ⚙️ 更新为最新模型名称
-        system=prompt,  # 使用传入的提示词
+        instructions=prompt,  # ⚙️ Use instructions instead of system, per LiveKit doc
         text_callback=text_callback,  # 如果提供了回调，处理生成的文本
+        voice="alloy",  # 设置语音模型
+        temperature=0.8,  # 设置温度参数
+        modalities=["text", "audio"],  # 指定模态
         turn_detection="server_vad",  # 使用服务器端语音活动检测
         api_key=openai_api_key,  # ⚙️ 添加API密钥参数
         room_name=room_name  # ⚙️ 直接在模型中指定房间名
