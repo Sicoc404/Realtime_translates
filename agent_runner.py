@@ -74,17 +74,14 @@ async def entrypoint(ctx: agents.JobContext):
     session = AgentSession(
         stt=deepgram.STT(
             model="nova-2",
-            language="zh",  # 中文语音识别
-            api_key=DEEPGRAM_API_KEY
+            language="zh"  # 中文语音识别
         ),
         llm=groq.LLM(
-            model="llama3-8b-8192",
-            api_key=GROQ_API_KEY
+            model="llama3-8b-8192"
         ),
         tts=cartesia.TTS(
             model="sonic-multilingual",
-            voice="a0e99841-438c-4a64-b679-ae501e7d6091",  # 多语言语音合成
-            api_key=CARTESIA_API_KEY
+            voice="a0e99841-438c-4a64-b679-ae501e7d6091"  # 多语言语音合成
         ),
     )
     
