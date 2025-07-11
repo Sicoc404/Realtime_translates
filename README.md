@@ -36,15 +36,19 @@ PORT=8000
 pip install -r requirements.txt
 ```
 
-2. 配置环境变量（复制`.env.example`到`.env`并填写）
+2. 配置环境变量（在Render平台或`.env`文件中配置）
 
-3. 运行Web服务：
+3. **方法一：一键启动所有服务**
 ```bash
-python main.py
+python start_services.py
 ```
 
-4. 运行LiveKit Agent（在另一个终端）：
+4. **方法二：分别启动服务**
 ```bash
+# 终端1：启动Web服务
+python main.py
+
+# 终端2：启动Agent服务
 python agent_runner.py dev
 ```
 
@@ -63,11 +67,28 @@ python agent_runner.py dev
 - `GET /status`: 服务状态
 - `POST /token`: 生成LiveKit访问令牌
 
-## 🔄 处理流程
+## 🔄 正确的使用流程
 
-1. **语音输入**: Deepgram将中文语音转换为文本
-2. **LLM处理**: Groq LLM根据房间类型进行翻译或处理
-3. **语音输出**: Cartesia将处理后的文本转换为自然语音
+### 🎤 讲师端（AI Speaker）
+1. 打开网页，点击右上角的 **🎤 AI Speaker** 按钮
+2. 授权麦克风权限
+3. 开始讲话，系统会自动：
+   - 将中文语音同时发送到所有房间（room_zh, room_kr, room_vn）
+   - 各房间的Agent接收音频并进行相应处理
+
+### 👂 听众端
+1. 选择语言房间：
+   - **中文原音房间**: 听到讲师的原始中文语音
+   - **韩文翻译房间**: 听到AI翻译的韩文语音 + 韩文字幕
+   - **越南文翻译房间**: 听到AI翻译的越南文语音 + 越南文字幕
+
+### 🔄 技术处理流程
+1. **音频输入**: 讲师通过AI Speaker按钮开始广播
+2. **多房间分发**: 同一音频流同时发送到3个房间
+3. **分别处理**: 
+   - room_zh: 直接播放原音
+   - room_kr: Deepgram STT → Groq LLM翻译 → Cartesia TTS韩文
+   - room_vn: Deepgram STT → Groq LLM翻译 → Cartesia TTS越南文
 4. **实时传输**: LiveKit WebRTC进行实时音频传输
 
 ## 📝 主要变更
