@@ -15,13 +15,13 @@ import uvicorn
 from pydantic import BaseModel
 
 from livekit import agents
-from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
+from livekit.agents import AgentSession, Agent, WorkerOptions, JobContext  # ⚙️ Updated imports
 from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
-# ⚙️ Use RealtimeModel from livekit.plugins.openai.realtime per docs
-from livekit.plugins.openai.realtime import RealtimeModel  # 正确导入 RealtimeModel
+# ⚙️ Use RealtimeModel from livekit.plugins.openai per docs
+from livekit.plugins import openai
 from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
-from session_factory import create_session
+from session_factory import create_realtime_model
 from translation_prompts import KR_PROMPT, VN_PROMPT
 from console_output import setup_subtitle_handlers, start_api
 
@@ -52,7 +52,17 @@ ROOM_VN = "room_vn"  # 越南文翻译房间
 translation_sessions = {}
 is_translation_running = False
 worker_task = None
-last_heartbeat = time.time()  # 添加心跳时间戳
+last_heartbeat = time.time()
+
+# ⚙️ 创建Agent类
+class TranslationAgent(Agent):
+    """实时翻译Agent"""
+    
+    def __init__(self, lang_code: str, prompt: str):
+        super().__init__(instructions=prompt)
+        self.lang_code = lang_code
+        self.prompt = prompt
+        logger.info(f"🤖 Created TranslationAgent for {lang_code}")
 
 # ⚙️ FastAPI lifespan setup for background worker
 @asynccontextmanager
@@ -104,70 +114,48 @@ async def homepage():
         # 如果找不到index.html，返回一个简单的HTML响应
         return """
         <html>
-            <head>
-                <title>实时翻译服务</title>
-                <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        line-height: 1.6;
-                    }
-                    h1 {
-                        color: #4a5568;
-                        border-bottom: 2px solid #e2e8f0;
-                        padding-bottom: 10px;
-                    }
-                    .status {
-                        background-color: #f0fff4;
-                        border-left: 4px solid #48bb78;
-                        padding: 12px;
-                        margin: 20px 0;
-                    }
-                    a {
-                        color: #4299e1;
-                        text-decoration: none;
-                    }
-                    a:hover {
-                        text-decoration: underline;
-                    }
-                    .links {
-                        margin-top: 30px;
-                    }
-                    .links a {
-                        margin-right: 15px;
-                    }
-                </style>
-            </head>
-            <body>
-                <h1>实时翻译服务 ✔️</h1>
-                <div class="status">
-                    <p>🟢 实时翻译服务运行中</p>
-                </div>
-                <p>
-                    这是一个基于LiveKit的实时语音翻译系统，可以将中文语音翻译成韩文和越南文。
-                </p>
-                <div class="links">
-                    <a href="/health">健康检查</a> | 
-                    <a href="/status">服务状态</a>
-                </div>
-            </body>
+        <head><title>Real-time Translation Service</title></head>
+        <body>
+            <h1>Real-time Translation Service</h1>
+            <p>Translation service is running!</p>
+            <p>Please check if index.html exists in the project directory.</p>
+        </body>
         </html>
         """
+
+# ⚙️ Health check endpoint
+@app.get("/health")
+async def health_check():
+    """健康检查端点"""
+    return {"status": "healthy", "timestamp": time.time()}
+
+# ⚙️ Status endpoint with heartbeat
+@app.get("/status")
+async def get_status():
+    """获取翻译服务状态"""
+    global is_translation_running, last_heartbeat
+    
+    current_time = time.time()
+    heartbeat_age = current_time - last_heartbeat
+    worker_alive = heartbeat_age < 60  # 60秒内有心跳认为是活跃的
+    
+    return {
+        "is_running": is_translation_running,
+        "worker_alive": worker_alive,
+        "last_heartbeat": last_heartbeat,
+        "heartbeat_age": heartbeat_age,
+        "rooms": {
+            "zh": ROOM_ZH,
+            "kr": ROOM_KR,
+            "vn": ROOM_VN
+        },
+        "timestamp": current_time
+    }
 
 # ⚙️ Request models
 class TokenRequest(BaseModel):
     roomName: str
     identity: str
-
-@app.get("/health")
-async def health_check():
-    """健康检查端点"""
-    return JSONResponse(
-        status_code=200,
-        content={"status": "ok"}
-    )
 
 # ⚙️ LiveKit token generation endpoint
 @app.post("/token")
@@ -190,28 +178,21 @@ async def create_token(request: TokenRequest):
             content={"error": f"生成Token失败: {str(e)}"}
         )
 
-@app.get("/status")
-async def get_status():
-    """获取翻译服务状态"""
+# ⚙️ Worker heartbeat task
+async def worker_heartbeat():
+    """Worker心跳任务"""
     global last_heartbeat
     
-    # 检查心跳是否在最近60秒内更新过
-    worker_alive = (time.time() - last_heartbeat) < 60
-    
-    return JSONResponse(
-        status_code=200,
-        content={
-            "translation_running": is_translation_running,
-            "worker_alive": worker_alive,
-            "last_heartbeat": last_heartbeat,
-            "active_sessions": len(translation_sessions),
-            "rooms": {
-                "chinese": ROOM_ZH,
-                "korean": ROOM_KR,
-                "vietnamese": ROOM_VN
-            }
-        }
-    )
+    while True:
+        try:
+            last_heartbeat = time.time()
+            await asyncio.sleep(30)  # 每30秒更新一次心跳
+        except asyncio.CancelledError:
+            logger.info("⚙️ Heartbeat task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"⚙️ Heartbeat error: {e}")
+            await asyncio.sleep(30)
 
 # ⚙️ Startup background worker
 async def run_worker():
@@ -247,23 +228,21 @@ async def run_worker():
     finally:
         logger.info("⚙️ Worker exiting")
 
-# ⚙️ Worker heartbeat function
+# ⚙️ Worker heartbeat task
 async def worker_heartbeat():
-    """周期性更新worker心跳时间戳"""
+    """Worker心跳任务"""
     global last_heartbeat
     
-    try:
-        while True:
-            # 更新心跳时间戳
+    while True:
+        try:
             last_heartbeat = time.time()
-            logger.debug("Worker heartbeat updated: %s", last_heartbeat)
-            
-            # 每30秒更新一次
+            await asyncio.sleep(30)  # 每30秒更新一次心跳
+        except asyncio.CancelledError:
+            logger.info("⚙️ Heartbeat task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"⚙️ Heartbeat error: {e}")
             await asyncio.sleep(30)
-    except asyncio.CancelledError:
-        logger.debug("Heartbeat task canceled")
-    except Exception as e:
-        logger.exception("Heartbeat error: %s", e)
 
 async def entrypoint_function():
     """
@@ -281,18 +260,14 @@ async def main():
         # 设置字幕处理器
         kr_subtitle_handler, vn_subtitle_handler = setup_subtitle_handlers()
         
-        # 启动 FastAPI 服务器（如果安装了FastAPI）
-        # 注意：我们不再需要在这里启动FastAPI，因为它已经作为主应用启动
-        # start_api()
-        
         # 更新心跳
         last_heartbeat = time.time()
         
-        # 创建三个不同的会话
-        logger.info("正在启动翻译会话...")
+        # 创建三个不同的RealtimeModel
+        logger.info("正在创建翻译模型...")
         
-        # 1. 中文原音会话 - 仅用于广播原始语音
-        zh_session = await create_session(
+        # 1. 中文原音模型 - 仅用于广播原始语音
+        zh_model = create_realtime_model(
             lang_code="zh",
             prompt="只需播放原始中文语音，无需翻译。",
             room_name=ROOM_ZH,
@@ -303,8 +278,8 @@ async def main():
             text_callback=None  # 原音不需要文本回调
         )
         
-        # 2. 中文到韩文翻译会话
-        kr_session = await create_session(
+        # 2. 中文到韩文翻译模型
+        kr_model = create_realtime_model(
             lang_code="kr",
             prompt=KR_PROMPT,
             room_name=ROOM_KR,
@@ -315,8 +290,8 @@ async def main():
             text_callback=kr_subtitle_handler
         )
         
-        # 3. 中文到越南文翻译会话
-        vn_session = await create_session(
+        # 3. 中文到越南文翻译模型
+        vn_model = create_realtime_model(
             lang_code="vn",
             prompt=VN_PROMPT,
             room_name=ROOM_VN,
@@ -327,28 +302,29 @@ async def main():
             text_callback=vn_subtitle_handler
         )
         
-        # 存储会话到全局变量
+        # 存储模型到全局变量
         translation_sessions = {
-            "zh": zh_session,
-            "kr": kr_session,
-            "vn": vn_session
+            "zh": zh_model,
+            "kr": kr_model,
+            "vn": vn_model
         }
         
         is_translation_running = True
         last_heartbeat = time.time()  # 再次更新心跳
         
-        logger.info("所有翻译会话已启动...")
+        logger.info("所有翻译模型已创建...")
         logger.info(f"中文原音广播到房间: {ROOM_ZH}")
         logger.info(f"韩文翻译广播到房间: {ROOM_KR}")
         logger.info(f"越南文翻译广播到房间: {ROOM_VN}")
         logger.info("翻译服务正在后台运行...")
         
-        # 保持会话运行
-        await asyncio.gather(
-            zh_session.wait_until_done(),
-            kr_session.wait_until_done(),
-            vn_session.wait_until_done()
-        )
+        # 注意：在这个新的架构中，我们不需要等待会话完成
+        # 因为实际的Agent会话将由LiveKit Worker API自动管理
+        
+        # 保持服务运行
+        while is_translation_running:
+            await asyncio.sleep(1)
+            last_heartbeat = time.time()
         
     except Exception as e:
         logger.exception(f"翻译服务启动失败: %s", e)
@@ -358,29 +334,28 @@ async def main():
         await shutdown_translation_service()
 
 async def shutdown_translation_service():
-    """关闭所有翻译会话"""
+    """关闭翻译服务"""
     global is_translation_running, translation_sessions
     
-    if translation_sessions:
-        logger.info("⚙️ 正在关闭翻译会话...")
-        try:
-            await asyncio.gather(
-                *[session.close() for session in translation_sessions.values()],
-                return_exceptions=True
-            )
-            translation_sessions.clear()
-        except Exception as e:
-            logger.exception("关闭翻译会话时出错: %s", e)
-    
-    is_translation_running = False
     logger.info("⚙️ Worker shutdown")
+    is_translation_running = False
+    
+    # 清理会话
+    if translation_sessions:
+        logger.info("正在清理翻译会话...")
+        translation_sessions.clear()
+    
+    logger.info("翻译服务已关闭")
 
-# ⚙️ Main entry point
+# ⚙️ Main execution
 if __name__ == "__main__":
-    import uvicorn
+    # 获取端口号
+    port = int(os.environ.get("PORT", 8000))
+    
+    # 启动FastAPI应用
     uvicorn.run(
-        "main:app", 
+        app, 
         host="0.0.0.0", 
-        port=int(os.getenv("PORT", "10000")),
-        reload=False  # 避免在生产环境中使用reload
+        port=port,
+        log_level="info"
     )
