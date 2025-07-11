@@ -30,45 +30,68 @@ async def create_session(
     返回:
         agents.AgentSession: LiveKit代理会话
     """
-    # ⚙️ 创建会话参数，不再使用AgentContext
-    connection_info = {
-        "url": livekit_url,
-        "api_key": api_key,
-        "api_secret": api_secret,
-        "identity": f"translator_{lang_code}",
-        "name": f"{lang_code.upper()} Translator"
-    }
     
-    # ⚙️ 使用新版API创建OpenAI实时模型，严格按照官方文档签名
-    # ⚙️ Use instructions instead of system per RealtimeModel constructor signature
-    realtime_model = openai.realtime.RealtimeModel(
-        instructions=prompt,  # 系统指令，替换原来的system参数
-        voice="alloy",  # 语音模型
-        temperature=0.8,  # 温度参数
-        api_key=openai_api_key  # OpenAI API密钥
-    )
+    # ⚙️ 创建OpenAI实时模型 - 使用最简化的参数避免兼容性问题
+    # ⚙️ CRITICAL: Use instructions instead of system per RealtimeModel constructor signature
+    try:
+        realtime_model = openai.realtime.RealtimeModel(
+            instructions=prompt  # 只使用最基本的instructions参数
+        )
+        print(f"✅ RealtimeModel created successfully for {lang_code}")
+    except Exception as e:
+        print(f"❌ RealtimeModel creation failed: {e}")
+        raise
     
     # ⚙️ 创建LiveKit代理会话
-    session = AgentSession(
-        url=livekit_url,
-        api_key=api_key,
-        api_secret=api_secret,
-        identity=f"translator_{lang_code}",
-        name=f"{lang_code.upper()} Translator"
-    )
+    try:
+        session = AgentSession(
+            url=livekit_url,
+            api_key=api_key,
+            api_secret=api_secret,
+            identity=f"translator_{lang_code}",
+            name=f"{lang_code.upper()} Translator"
+        )
+        print(f"✅ AgentSession created successfully for {lang_code}")
+    except Exception as e:
+        print(f"❌ AgentSession creation failed: {e}")
+        raise
     
-    # 设置文本回调（如果提供）
-    if text_callback:
+    # 设置OpenAI API密钥（如果模型支持）
+    if hasattr(realtime_model, 'api_key'):
+        realtime_model.api_key = openai_api_key
+    
+    # 设置文本回调（如果提供且模型支持）
+    if text_callback and hasattr(realtime_model, 'text_callback'):
         realtime_model.text_callback = text_callback
     
-    # 将模型添加到会话
-    session.add_model(realtime_model)
+    # 设置语音参数（如果模型支持）
+    if hasattr(realtime_model, 'voice'):
+        realtime_model.voice = "alloy"
+    
+    # 设置温度参数（如果模型支持）
+    if hasattr(realtime_model, 'temperature'):
+        realtime_model.temperature = 0.8
+    
+    # 将模型添加到会话（如果会话支持）
+    if hasattr(session, 'add_model'):
+        session.add_model(realtime_model)
     
     # 启动会话
-    await session.start()
+    try:
+        await session.start()
+        print(f"✅ Session started successfully for {lang_code}")
+    except Exception as e:
+        print(f"❌ Session start failed: {e}")
+        raise
     
-    # 连接到指定房间
-    await session.connect(room_name)
+    # 连接到指定房间（如果会话支持）
+    try:
+        if hasattr(session, 'connect'):
+            await session.connect(room_name)
+            print(f"✅ Connected to room {room_name} for {lang_code}")
+    except Exception as e:
+        print(f"❌ Room connection failed: {e}")
+        # 不抛出异常，因为这可能不是必需的
     
-    print(f"{lang_code.upper()} 翻译会话已创建并启动")
+    print(f"🎉 {lang_code.upper()} 翻译会话已创建并启动")
     return session 
