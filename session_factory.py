@@ -1,5 +1,6 @@
 import logging
 from livekit.agents import llm
+# ⚙️ Use RealtimeModel from livekit.plugins.openai.realtime per docs
 from livekit.plugins.openai.realtime import RealtimeModel
 from livekit import rtc
 from translation_prompts import (
@@ -46,10 +47,10 @@ async def create_session(
         logger.info(f"🏠 Room: {room_name}")
         logger.info(f"📝 Using prompt: {prompt[:50]}...")
         
-        # 按照LiveKit官方文档创建RealtimeModel
+        # ⚙️ 按照LiveKit官方文档创建RealtimeModel
         # 参考: https://docs.livekit.io/reference/python/livekit/plugins/openai/realtime/realtime_model.html
         realtime_model = RealtimeModel(
-            instructions=prompt,
+            instructions=prompt,  # ⚙️ system prompt
             model=model,
             voice="alloy",
             temperature=0.8,
