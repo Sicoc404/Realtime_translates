@@ -1,7 +1,7 @@
 import logging
 from livekit.agents import llm
-# ⚙️ Use RealtimeModel from livekit.plugins.openai.realtime per docs
-from livekit.plugins.openai.realtime import RealtimeModel
+# ⚙️ Use RealtimeModel from livekit.plugins.openai per docs
+from livekit.plugins import openai
 from livekit import rtc
 from translation_prompts import (
     SYSTEM_PROMPT_CHINESE, 
@@ -48,27 +48,19 @@ async def create_session(
         logger.info(f"📝 Using prompt: {prompt[:50]}...")
         
         # ⚙️ 按照LiveKit官方文档创建RealtimeModel
-        # 参考: https://docs.livekit.io/reference/python/livekit/plugins/openai/realtime/realtime_model.html
-        realtime_model = RealtimeModel(
-            instructions=prompt,  # ⚙️ system prompt
-            model=model,
-            voice="alloy",
-            temperature=0.8,
-            modalities=["text", "audio"],
-            input_audio_format="pcm16",
-            output_audio_format="pcm16",
-            api_key=openai_api_key
-        )
-        
-        logger.info(f"✅ RealtimeModel created successfully with model: {model}")
+        # 参考: https://docs.livekit.io/agents/integrations/realtime/openai/
+        # RealtimeModel() 构造函数不接受参数，系统提示通过Agent设置
+        realtime_model = openai.realtime.RealtimeModel()
         
         # 创建会话
         session = realtime_model.session()
-        logger.info("✅ RealtimeSession created successfully")
+        
+        logger.info("✅ RealtimeModel created successfully")
+        logger.info(f"🎯 Session created for {lang_code} translation")
         
         return session
         
     except Exception as e:
         logger.error(f"❌ RealtimeModel creation failed: {e}")
-        logger.error(f"📋 Error details: {type(e).__name__}: {str(e)}")
-        raise 
+        logger.error(f"📋 Error details: {type(e).__name__}: {e}")
+        raise e 
