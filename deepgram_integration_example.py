@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from livekit.agents import llm
+# ⚙️ Use RealtimeModel from livekit.plugins.openai.realtime per docs
 from livekit.plugins.openai.realtime import RealtimeModel
 
 logger = logging.getLogger(__name__)
@@ -18,9 +19,10 @@ async def create_deepgram_realtime_session():
         if not openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
-        # 创建RealtimeModel - 使用与session_factory.py相同的方式
+        # ⚙️ 按照LiveKit官方文档创建RealtimeModel
+        # 参考: https://docs.livekit.io/reference/python/livekit/plugins/openai/realtime/realtime_model.html
         realtime_model = RealtimeModel(
-            instructions="You are a helpful AI assistant that can translate between languages.",
+            instructions="You are a helpful AI assistant that can translate between languages.",  # ⚙️ system prompt
             model="gpt-4o-realtime-preview",
             voice="alloy",
             temperature=0.8,
