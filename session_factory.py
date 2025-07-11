@@ -1,7 +1,7 @@
 import logging
 from livekit.agents import llm
-# ⚙️ Use RealtimeModel from livekit.plugins.openai per docs
-from livekit.plugins import openai
+# ⚙️ Use Groq LLM from livekit.plugins.groq per docs
+from livekit.plugins import groq
 from livekit import rtc
 from translation_prompts import (
     SYSTEM_PROMPT_CHINESE, 
@@ -14,19 +14,19 @@ from translation_prompts import (
 
 logger = logging.getLogger(__name__)
 
-def create_realtime_model(
+def create_groq_llm(
     lang_code: str,
     prompt: str,
     room_name: str,
     livekit_url: str,
     api_key: str,
     api_secret: str,
-    openai_api_key: str,
+    groq_api_key: str,
     text_callback=None,
-    model: str = "gpt-4o-realtime-preview"
-) -> openai.realtime.RealtimeModel:
+    model: str = "llama3-8b-8192"
+) -> groq.LLM:
     """
-    创建OpenAI RealtimeModel用于实时翻译
+    创建Groq LLM用于实时翻译
     
     Args:
         lang_code: 语言代码 (zh, kr, vn, en, es, fr)
@@ -35,32 +35,64 @@ def create_realtime_model(
         livekit_url: LiveKit服务器URL
         api_key: LiveKit API密钥
         api_secret: LiveKit API密钥
-        openai_api_key: OpenAI API密钥
+        groq_api_key: Groq API密钥
         text_callback: 文本回调函数
         model: 使用的模型名称
         
     Returns:
-        RealtimeModel: 配置好的实时模型
+        groq.LLM: 配置好的Groq LLM
     """
     try:
-        logger.info(f"🔧 Creating RealtimeModel for language: {lang_code}")
+        logger.info(f"🔧 Creating Groq LLM for language: {lang_code}")
         logger.info(f"🏠 Room: {room_name}")
         logger.info(f"📝 Using prompt: {prompt[:50]}...")
         
-        # ⚙️ 按照LiveKit官方文档创建RealtimeModel
-        # 参考: https://docs.livekit.io/agents/integrations/realtime/openai/
-        # RealtimeModel() 构造函数不接受参数，系统提示通过Agent设置
-        realtime_model = openai.realtime.RealtimeModel()
+        # ⚙️ 按照LiveKit官方文档创建Groq LLM
+        # 参考: https://docs.livekit.io/agents/integrations/groq/
+        groq_llm = groq.LLM(
+            model=model,
+            api_key=groq_api_key
+        )
         
-        logger.info("✅ RealtimeModel created successfully")
-        logger.info(f"🎯 Model ready for {lang_code} translation")
+        logger.info("✅ Groq LLM created successfully")
+        logger.info(f"🎯 LLM ready for {lang_code} translation")
         
-        return realtime_model
+        return groq_llm
         
     except Exception as e:
-        logger.error(f"❌ RealtimeModel creation failed: {e}")
+        logger.error(f"❌ Groq LLM creation failed: {e}")
         logger.error(f"📋 Error details: {type(e).__name__}: {e}")
         raise e
+
+# 为了向后兼容，保留原函数名但使用Groq LLM
+def create_realtime_model(
+    lang_code: str,
+    prompt: str,
+    room_name: str,
+    livekit_url: str,
+    api_key: str,
+    api_secret: str,
+    openai_api_key: str,  # 保留参数名以兼容现有代码
+    text_callback=None,
+    model: str = "llama3-8b-8192"
+) -> groq.LLM:
+    """
+    创建Groq LLM用于实时翻译 (向后兼容函数)
+    
+    注意: 这个函数现在返回Groq LLM而不是OpenAI RealtimeModel
+    """
+    # 将openai_api_key参数重新映射为groq_api_key
+    return create_groq_llm(
+        lang_code=lang_code,
+        prompt=prompt,
+        room_name=room_name,
+        livekit_url=livekit_url,
+        api_key=api_key,
+        api_secret=api_secret,
+        groq_api_key=openai_api_key,  # 重新映射参数
+        text_callback=text_callback,
+        model=model
+    )
 
 # 保持向后兼容的别名
 async def create_session(
@@ -72,12 +104,12 @@ async def create_session(
     api_secret: str,
     openai_api_key: str,
     text_callback=None,
-    model: str = "gpt-4o-realtime-preview"
-) -> openai.realtime.RealtimeModel:
+    model: str = "llama3-8b-8192"
+) -> groq.LLM:
     """
-    创建OpenAI Realtime会话用于实时翻译 (向后兼容)
+    创建Groq LLM用于实时翻译 (向后兼容)
     
-    注意: 这个函数现在返回RealtimeModel而不是会话
+    注意: 这个函数现在返回Groq LLM而不是会话
     """
     return create_realtime_model(
         lang_code=lang_code,
