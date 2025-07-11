@@ -1,6 +1,6 @@
 import logging
-import openai
 from livekit.agents import llm
+from livekit.plugins.openai.realtime import RealtimeModel
 from livekit import rtc
 from translation_prompts import (
     SYSTEM_PROMPT_CHINESE, 
@@ -48,7 +48,7 @@ async def create_session(
         
         # 按照LiveKit官方文档创建RealtimeModel
         # 参考: https://docs.livekit.io/reference/python/livekit/plugins/openai/realtime/realtime_model.html
-        realtime_model = openai.realtime.RealtimeModel(
+        realtime_model = RealtimeModel(
             instructions=prompt,
             model=model,
             voice="alloy",
