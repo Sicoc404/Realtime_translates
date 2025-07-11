@@ -17,8 +17,8 @@ from pydantic import BaseModel
 from livekit import agents
 from livekit.agents import AgentSession, Agent, WorkerOptions, JobContext  # ⚙️ Updated imports
 from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
-# ⚙️ Use RealtimeModel from livekit.plugins.openai per docs
-from livekit.plugins import openai
+# ⚙️ Use Groq LLM from livekit.plugins.groq per docs
+from livekit.plugins import groq, deepgram, cartesia
 from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
 from session_factory import create_realtime_model
@@ -40,8 +40,8 @@ LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "wss://your-livekit-server.com")
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "devkey")  # 默认开发密钥
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开发密钥
 
-# OpenAI API 密钥
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+# Groq API 密钥
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # 房间名称
 ROOM_ZH = "room_zh"  # 中文原音房间
@@ -54,7 +54,7 @@ is_translation_running = False
 worker_task = None
 last_heartbeat = time.time()
 
-# ⚙️ 创建Agent类
+# ⚙️ 创建翻译Agent类
 class TranslationAgent(Agent):
     """实时翻译Agent"""
     
@@ -202,22 +202,11 @@ async def run_worker():
     logger.info("⚙️ Worker started")
     
     try:
-        # 创建WorkerOptions
-        opts = WorkerOptions(
-            entrypoint_function,  # 传入口函数作为第一个位置参数
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            ws_url=LIVEKIT_URL  # 使用ws_url而不是host
-        )
-        
         # 启动心跳任务
         heartbeat_task = asyncio.create_task(worker_heartbeat())
         
-        # 启动翻译服务
-        await entrypoint_function()
-        
-        # 注意：这里不直接调用run_app(opts)，因为它会阻塞当前协程
-        # 我们已经在entrypoint_function中实现了主要逻辑
+        # 启动主服务
+        await main()
         
         # 取消心跳任务
         heartbeat_task.cancel()
@@ -228,32 +217,85 @@ async def run_worker():
     finally:
         logger.info("⚙️ Worker exiting")
 
-# ⚙️ Worker heartbeat task
-async def worker_heartbeat():
-    """Worker心跳任务"""
-    global last_heartbeat
+async def entrypoint_function(ctx: agents.JobContext):
+    """
+    LiveKit Worker 入口点函数 - 按照官方文档实现
+    此函数处理Agent会话
+    """
+    global is_translation_running, last_heartbeat
     
-    while True:
-        try:
+    try:
+        # 更新心跳
+        last_heartbeat = time.time()
+        
+        # 获取房间名称来确定翻译语言
+        room_name = ctx.room.name
+        logger.info(f"🏠 Agent joining room: {room_name}")
+        
+        # 根据房间名称确定翻译类型
+        if room_name == ROOM_ZH:
+            # 中文原音房间 - 不需要翻译
+            agent = TranslationAgent("zh", "你是一个中文语音助手，直接播放原始中文语音。")
+            instructions = "播放原始中文语音，无需翻译。"
+        elif room_name == ROOM_KR:
+            # 韩文翻译房间
+            agent = TranslationAgent("kr", KR_PROMPT)
+            instructions = KR_PROMPT
+        elif room_name == ROOM_VN:
+            # 越南文翻译房间
+            agent = TranslationAgent("vn", VN_PROMPT)
+            instructions = VN_PROMPT
+        else:
+            # 默认中文房间
+            agent = TranslationAgent("zh", "你是一个中文语音助手。")
+            instructions = "你是一个中文语音助手。"
+        
+        # 创建AgentSession
+        session = AgentSession(
+            stt=deepgram.STT(
+                model="nova-2",
+                language="zh"  # 中文语音识别
+            ),
+            llm=groq.LLM(
+                model="llama3-8b-8192",
+                api_key=GROQ_API_KEY
+            ),
+            tts=cartesia.TTS(
+                model="sonic-multilingual",
+                voice="a0e99841-438c-4a64-b679-ae501e7d6091"  # 多语言语音合成
+            ),
+        )
+        
+        # 启动会话
+        await session.start(
+            room=ctx.room,
+            agent=agent
+        )
+        
+        # 连接到房间
+        await ctx.connect()
+        
+        # 生成初始回复
+        await session.generate_reply(
+            instructions=instructions
+        )
+        
+        is_translation_running = True
+        logger.info(f"✅ Agent started for room {room_name}")
+        
+        # 保持会话运行
+        while is_translation_running:
+            await asyncio.sleep(1)
             last_heartbeat = time.time()
-            await asyncio.sleep(30)  # 每30秒更新一次心跳
-        except asyncio.CancelledError:
-            logger.info("⚙️ Heartbeat task cancelled")
-            break
-        except Exception as e:
-            logger.error(f"⚙️ Heartbeat error: {e}")
-            await asyncio.sleep(30)
-
-async def entrypoint_function():
-    """
-    LiveKit Worker 入口点函数
-    此函数包含主要应用逻辑
-    """
-    # 调用主函数
-    await main()
+            
+    except Exception as e:
+        logger.exception(f"Agent session failed: %s", e)
+        is_translation_running = False
+    finally:
+        logger.info(f"🔚 Agent session ended for room {ctx.room.name}")
 
 async def main():
-    """主要的音频翻译处理逻辑"""
+    """主要的音频翻译处理逻辑 - 使用Groq LLM和AgentSession"""
     global is_translation_running, translation_sessions, last_heartbeat
     
     try:
@@ -263,63 +305,22 @@ async def main():
         # 更新心跳
         last_heartbeat = time.time()
         
-        # 创建三个不同的RealtimeModel
-        logger.info("正在创建翻译模型...")
+        logger.info("正在创建Groq LLM翻译模型...")
         
-        # 1. 中文原音模型 - 仅用于广播原始语音
-        zh_model = create_realtime_model(
-            lang_code="zh",
-            prompt="只需播放原始中文语音，无需翻译。",
-            room_name=ROOM_ZH,
-            livekit_url=LIVEKIT_URL,
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,
-            text_callback=None  # 原音不需要文本回调
-        )
+        # 验证Groq API密钥
+        if not GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY environment variable is required")
         
-        # 2. 中文到韩文翻译模型
-        kr_model = create_realtime_model(
-            lang_code="kr",
-            prompt=KR_PROMPT,
-            room_name=ROOM_KR,
-            livekit_url=LIVEKIT_URL,
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,
-            text_callback=kr_subtitle_handler
-        )
-        
-        # 3. 中文到越南文翻译模型
-        vn_model = create_realtime_model(
-            lang_code="vn",
-            prompt=VN_PROMPT,
-            room_name=ROOM_VN,
-            livekit_url=LIVEKIT_URL,
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET,
-            openai_api_key=OPENAI_API_KEY,
-            text_callback=vn_subtitle_handler
-        )
-        
-        # 存储模型到全局变量
-        translation_sessions = {
-            "zh": zh_model,
-            "kr": kr_model,
-            "vn": vn_model
-        }
+        logger.info("✅ Groq API Key configured")
+        logger.info("🚀 Translation service ready to handle agent sessions")
         
         is_translation_running = True
-        last_heartbeat = time.time()  # 再次更新心跳
+        last_heartbeat = time.time()
         
-        logger.info("所有翻译模型已创建...")
-        logger.info(f"中文原音广播到房间: {ROOM_ZH}")
-        logger.info(f"韩文翻译广播到房间: {ROOM_KR}")
-        logger.info(f"越南文翻译广播到房间: {ROOM_VN}")
-        logger.info("翻译服务正在后台运行...")
-        
-        # 注意：在这个新的架构中，我们不需要等待会话完成
-        # 因为实际的Agent会话将由LiveKit Worker API自动管理
+        logger.info("翻译服务已启动，等待Agent会话...")
+        logger.info(f"中文原音房间: {ROOM_ZH}")
+        logger.info(f"韩文翻译房间: {ROOM_KR}")
+        logger.info(f"越南文翻译房间: {ROOM_VN}")
         
         # 保持服务运行
         while is_translation_running:
