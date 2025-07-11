@@ -69,9 +69,13 @@ class TranslationSession:
         
         # 创建OpenAI实时模型，并将转写文本提供给它
         model = openai.realtime.RealtimeModel(
-            model="gpt-4o",
+            model="gpt-4o-realtime-preview",  # 更新为最新模型名称
             audio_output=audio_broadcast,
-            system=KR_PROMPT,
+            instructions=KR_PROMPT,  # ⚙️ Use instructions instead of system, per LiveKit doc
+            voice="alloy",  # 设置语音模型
+            temperature=0.8,  # 设置温度参数
+            modalities=["text", "audio"],  # 指定模态
+            turn_detection="server_vad",  # 使用服务器端语音活动检测
             text_callback=self.handle_kr_subtitle
         )
         
