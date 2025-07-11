@@ -41,6 +41,7 @@
             color: white;
             padding: 40px 30px;
             text-align: center;
+            position: relative;
         }
 
         .header h1 {
@@ -52,6 +53,40 @@
         .header p {
             font-size: 1.1rem;
             opacity: 0.9;
+        }
+
+        .ai-speaker-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .ai-speaker-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.05);
+        }
+
+        .ai-speaker-btn.active {
+            background: #e74c3c;
+            border-color: #c0392b;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(231, 76, 60, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0); }
         }
         
         /* 添加服务器状态样式 */
@@ -439,6 +474,7 @@
         <div class="header">
             <button class="back-btn" onclick="showLanguageSelector()" style="display: none;" id="backBtn">← 返回</button>
             <button class="speaker-btn" onclick="enterSpeakerMode()" id="speakerBtn">🎤 Speaker</button>
+            <button class="ai-speaker-btn" onclick="toggleAISpeaker()" id="aiSpeakerBtn">🎤 AI Speaker</button>
             <h1>实时翻译广播</h1>
             <p>Real-time Translation Broadcast Service</p>
             <div class="server-status" id="serverStatus">服务状态加载中...</div>
@@ -970,6 +1006,108 @@
             subtitleSize = Math.max(0.8, Math.min(2.0, subtitleSize + delta * 0.1));
             document.getElementById('subs-kr').style.fontSize = subtitleSize + 'rem';
             document.getElementById('subs-vn').style.fontSize = subtitleSize + 'rem';
+        }
+
+        // AI Speaker 功能
+        let isAISpeakerActive = false;
+        let aiSpeakerRooms = [];
+        
+        async function toggleAISpeaker() {
+            const btn = document.getElementById('aiSpeakerBtn');
+            
+            if (!isAISpeakerActive) {
+                // 启动AI Speaker模式
+                try {
+                    btn.textContent = '🔴 停止广播';
+                    btn.classList.add('active');
+                    isAISpeakerActive = true;
+                    
+                    // 连接到所有房间进行广播
+                    await startAISpeakerBroadcast();
+                    
+                    alert('AI Speaker已启动！现在可以开始讲话，您的声音将被实时翻译并广播到所有房间。');
+                } catch (error) {
+                    console.error('启动AI Speaker失败:', error);
+                    alert('启动AI Speaker失败: ' + error.message);
+                    stopAISpeaker();
+                }
+            } else {
+                // 停止AI Speaker模式
+                stopAISpeaker();
+            }
+        }
+        
+        async function startAISpeakerBroadcast() {
+            // 清空现有房间连接
+            aiSpeakerRooms = [];
+            
+            // 创建到所有房间的连接
+            const rooms = ['room_zh', 'room_kr', 'room_vn'];
+            
+            for (const roomName of rooms) {
+                try {
+                    const room = new Room();
+                    const identity = `ai-speaker-${Date.now()}`;
+                    
+                    // 获取Token
+                    const tokenResponse = await fetch('/token', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            roomName: roomName,
+                            identity: identity
+                        })
+                    });
+                    
+                    const tokenData = await tokenResponse.json();
+                    
+                    // 连接到房间
+                    await room.connect(wsURL, tokenData.token);
+                    
+                    // 创建音频轨道
+                    const [audioTrack] = await createLocalTracks({ audio: true });
+                    
+                    // 发布音频轨道
+                    await room.localParticipant.publishTrack(audioTrack);
+                    
+                    aiSpeakerRooms.push({
+                        room: room,
+                        roomName: roomName,
+                        audioTrack: audioTrack
+                    });
+                    
+                    console.log(`AI Speaker已连接到房间: ${roomName}`);
+                } catch (error) {
+                    console.error(`连接到房间 ${roomName} 失败:`, error);
+                }
+            }
+            
+            console.log(`AI Speaker已连接到 ${aiSpeakerRooms.length} 个房间`);
+        }
+        
+        function stopAISpeaker() {
+            const btn = document.getElementById('aiSpeakerBtn');
+            btn.textContent = '🎤 AI Speaker';
+            btn.classList.remove('active');
+            isAISpeakerActive = false;
+            
+            // 断开所有房间连接
+            aiSpeakerRooms.forEach(async (roomData) => {
+                try {
+                    if (roomData.audioTrack) {
+                        roomData.audioTrack.stop();
+                    }
+                    await roomData.room.disconnect();
+                    console.log(`AI Speaker已断开房间: ${roomData.roomName}`);
+                } catch (error) {
+                    console.error(`断开房间 ${roomData.roomName} 失败:`, error);
+                }
+            });
+            
+            aiSpeakerRooms = [];
+            console.log('AI Speaker已停止');
         }
 
         // 音量控制
