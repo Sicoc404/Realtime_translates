@@ -17,7 +17,8 @@ from pydantic import BaseModel
 from livekit import agents
 from livekit.agents import Worker, WorkerOptions  # ⚙️ Updated import for livekit v1.x
 from livekit.agents.cli import run_app  # ⚙️ import run_app from cli
-from livekit.plugins import openai  # ⚙️ Updated import for livekit v1.x
+# ⚙️ Use RealtimeModel from livekit.plugins.openai.realtime per docs
+from livekit.plugins.openai.realtime import RealtimeModel  # 正确导入 RealtimeModel
 from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
 from session_factory import create_session
