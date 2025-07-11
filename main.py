@@ -205,8 +205,27 @@ async def run_worker():
         # 启动心跳任务
         heartbeat_task = asyncio.create_task(worker_heartbeat())
         
-        # 启动主服务
-        await main()
+        # 验证必要的API密钥
+        if not GROQ_API_KEY:
+            logger.error("❌ GROQ_API_KEY environment variable is required")
+            return
+        
+        logger.info("🚀 Starting LiveKit Agent with Groq LLM")
+        logger.info(f"支持的房间:")
+        logger.info(f"  - 中文原音: {ROOM_ZH}")
+        logger.info(f"  - 韩文翻译: {ROOM_KR}")
+        logger.info(f"  - 越南文翻译: {ROOM_VN}")
+        
+        # 创建WorkerOptions并运行Agent
+        worker_options = WorkerOptions(
+            entrypoint_fnc=entrypoint_function,
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            ws_url=LIVEKIT_URL
+        )
+        
+        # 使用agents.cli.run_app来运行Agent
+        await agents.cli.run_app(worker_options)
         
         # 取消心跳任务
         heartbeat_task.cancel()
@@ -257,8 +276,7 @@ async def entrypoint_function(ctx: agents.JobContext):
                 language="zh"  # 中文语音识别
             ),
             llm=groq.LLM(
-                model="llama3-8b-8192",
-                api_key=GROQ_API_KEY
+                model="llama3-8b-8192"
             ),
             tts=cartesia.TTS(
                 model="sonic-multilingual",
