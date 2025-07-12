@@ -1,3 +1,4 @@
+# 完整功能版本 - 包含Web服务和Agent服务
 livekit-agents[groq,deepgram,cartesia]>=1.1.0,<2.0.0
 livekit-api>=1.0.0,<2.0.0
 python-dotenv>=1.0.0
