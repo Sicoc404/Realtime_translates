@@ -10,7 +10,7 @@ import logging
 from dotenv import load_dotenv
 
 from livekit import agents
-from livekit.agents import AgentSession, Agent, RoomInputOptions
+from livekit.agents import Agent, AgentSession, JobContext
 from livekit.plugins import groq, deepgram, cartesia
 
 from translation_prompts import KR_PROMPT, VN_PROMPT
@@ -30,10 +30,13 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
 CARTESIA_API_KEY = os.environ.get("CARTESIA_API_KEY", "")
 
-# 房间名称
-ROOM_ZH = "room_zh"  # 中文原音房间
-ROOM_KR = "room_kr"  # 韩文翻译房间  
-ROOM_VN = "room_vn"  # 越南文翻译房间
+# 检查必要的API密钥
+if not GROQ_API_KEY:
+    logger.error("❌ GROQ_API_KEY 未设置")
+if not DEEPGRAM_API_KEY:
+    logger.error("❌ DEEPGRAM_API_KEY 未设置")
+if not CARTESIA_API_KEY:
+    logger.error("❌ CARTESIA_API_KEY 未设置")
 
 
 class TranslationAgent(Agent):
@@ -46,11 +49,14 @@ class TranslationAgent(Agent):
         logger.info(f"🤖 创建翻译Agent: {lang_code}")
 
 
-async def entrypoint(ctx: agents.JobContext):
+async def entrypoint(ctx: JobContext):
     """
     LiveKit Agent 入口点函数
     按照官方文档实现STT-LLM-TTS管道
     """
+    
+    # 连接到房间
+    await ctx.connect()
     
     # 获取房间名称来确定翻译类型和提示词
     room_name = ctx.room.name
@@ -77,53 +83,53 @@ async def entrypoint(ctx: agents.JobContext):
         logger.info("🔄 设置默认中文Agent")
     
     # 创建AgentSession - 按照官方文档的STT-LLM-TTS管道
-    session = AgentSession(
-        stt=deepgram.STT(
-            model="nova-2",
-            language="zh"  # 中文语音识别
-        ),
-        llm=groq.LLM(
-            model="llama3-8b-8192"
-        ),
-        tts=cartesia.TTS(
-            model="sonic-multilingual",
-            voice="a0e99841-438c-4a64-b679-ae501e7d6091"  # 多语言语音合成
-        ),
-    )
-    
-    logger.info(f"🔧 创建AgentSession用于房间: {room_name}")
-    
-    # 启动会话
-    await session.start(
-        room=ctx.room,
-        agent=agent
-    )
-    
-    logger.info(f"▶️ AgentSession已启动用于房间: {room_name}")
-    
-    # 连接到房间
-    await ctx.connect()
-    
-    logger.info(f"✅ Agent已连接到房间: {room_name}")
-    logger.info(f"🎧 Agent正在监听房间 {room_name} 中的音频流...")
-    
-    # 生成初始回复（可选）
     try:
-        if room_name == "kr":
-            await session.generate_reply(
-                instructions="房间已准备好进行中文到韩文的实时翻译。"
-            )
-        elif room_name == "vn":
-            await session.generate_reply(
-                instructions="房间已准备好进行中文到越南文的实时翻译。"
-            )
-        else:
-            await session.generate_reply(
-                instructions="中文原音房间已准备就绪。"
-            )
-        logger.info(f"🔊 已发送初始欢迎消息到房间: {room_name}")
+        session = AgentSession(
+            stt=deepgram.STT(
+                model="nova-2",
+                language="zh"  # 中文语音识别
+            ),
+            llm=groq.LLM(
+                model="llama3-8b-8192"
+            ),
+            tts=cartesia.TTS(
+                model="sonic-multilingual",
+                voice="a0e99841-438c-4a64-b679-ae501e7d6091"  # 多语言语音合成
+            ),
+        )
+        
+        logger.info(f"🔧 创建AgentSession用于房间: {room_name}")
+        
+        # 启动会话
+        await session.start(
+            room=ctx.room,
+            agent=agent
+        )
+        
+        logger.info(f"▶️ AgentSession已启动用于房间: {room_name}")
+        logger.info(f"🎧 Agent正在监听房间 {room_name} 中的音频流...")
+        
+        # 生成初始回复（可选）
+        try:
+            if room_name == "kr":
+                await session.generate_reply(
+                    instructions="房间已准备好进行中文到韩文的实时翻译。"
+                )
+            elif room_name == "vn":
+                await session.generate_reply(
+                    instructions="房间已准备好进行中文到越南文的实时翻译。"
+                )
+            else:
+                await session.generate_reply(
+                    instructions="中文原音房间已准备就绪。"
+                )
+            logger.info(f"🔊 已发送初始欢迎消息到房间: {room_name}")
+        except Exception as e:
+            logger.warning(f"发送初始消息失败: {str(e)}")
+            
     except Exception as e:
-        logger.warning(f"发送初始消息失败: {str(e)}")
+        logger.error(f"❌ 创建AgentSession失败: {str(e)}")
+        raise
 
 
 # 主函数 - 用于测试
