@@ -77,6 +77,7 @@ ROOM_VN = "vn"    # 越南文翻译房间
 # ⚙️ 全局变量存储服务状态
 is_service_running = False
 last_heartbeat = time.time()
+agent_processes = {}  # 存储Agent进程
 
 # ⚙️ FastAPI lifespan setup
 @asynccontextmanager
