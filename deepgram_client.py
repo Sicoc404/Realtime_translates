@@ -401,24 +401,44 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
         logger.info(f"📝 中文转写: {text}")
         
         try:
-            # 简单的模拟翻译逻辑
-            # 韩文翻译
-            kr_translator = agent_session.get("kr_translator")
-            if kr_translator:
-                # 使用简单的模拟翻译
-                kr_translation = f"[KR] {text}"  # 模拟韩文翻译
-                if kr_translation:
-                    on_kr_translation(kr_translation)
-                    logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
+            # 使用Groq LLM进行真正的翻译
+            import asyncio
             
-            # 越南文翻译
-            vn_translator = agent_session.get("vn_translator")
-            if vn_translator:
-                # 使用简单的模拟翻译
-                vn_translation = f"[VN] {text}"  # 模拟越南文翻译
-                if vn_translation:
-                    on_vn_translation(vn_translation)
-                    logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
+            async def translate_text():
+                # 韩文翻译
+                kr_translator = agent_session.get("kr_translator")
+                if kr_translator:
+                    try:
+                        # 使用Groq LLM进行韩文翻译
+                        kr_prompt = f"请将以下中文翻译成韩文，只返回翻译结果，不要任何解释：{text}"
+                        kr_response = await kr_translator.achat(kr_prompt)
+                        kr_translation = kr_response.content.strip()
+                        
+                        if kr_translation:
+                            on_kr_translation(kr_translation)
+                            logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
+                    except Exception as e:
+                        logger.error(f"韩文翻译失败: {str(e)}")
+                        on_kr_translation(f"[韩文翻译错误: {str(e)}]")
+                
+                # 越南文翻译
+                vn_translator = agent_session.get("vn_translator")
+                if vn_translator:
+                    try:
+                        # 使用Groq LLM进行越南文翻译
+                        vn_prompt = f"请将以下中文翻译成越南文，只返回翻译结果，不要任何解释：{text}"
+                        vn_response = await vn_translator.achat(vn_prompt)
+                        vn_translation = vn_response.content.strip()
+                        
+                        if vn_translation:
+                            on_vn_translation(vn_translation)
+                            logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
+                    except Exception as e:
+                        logger.error(f"越南文翻译失败: {str(e)}")
+                        on_vn_translation(f"[越南文翻译错误: {str(e)}]")
+            
+            # 启动翻译任务
+            asyncio.create_task(translate_text())
                 
         except Exception as e:
             logger.error(f"❌ 翻译过程中出错: {str(e)}")
@@ -428,7 +448,7 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
     
     # 创建Deepgram客户端
     try:
-        # 总是使用模拟模式创建客户端，以避免导入问题
+        # 根据环境自动判断是否使用模拟模式
         deepgram_client = DeepgramClient(
             api_key=api_key,
             on_transcript=handle_transcript,
@@ -437,7 +457,7 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
             interim_results=True,
             punctuate=True,
             endpointing=True,
-            simulation_mode=True  # 强制使用模拟模式
+            simulation_mode=use_simulation  # 根据环境自动判断
         )
         
         # 启动异步任务来启动流
