@@ -43,12 +43,21 @@ class TranslationAgent(Agent):
         self.lang_code = lang_code
         self.prompt = prompt
         logger.info(f"🤖 Created TranslationAgent for {lang_code}")
+        
+    async def on_chat(self, chat: agents.Chat):
+        # 注入翻译指令到LLM上下文
+        chat.add_user_message(self.prompt)
+        await super().on_chat(chat)
 
 async def entrypoint(ctx: agents.JobContext):
     """
     LiveKit Agent 入口点函数
     按照官方文档实现STT-LLM-TTS管道
     """
+    
+    # 必须先连接房间
+    await ctx.connect()
+    logger.info(f"✅ 已连接到房间: {ctx.room.name}")
     
     # 获取房间名称来确定翻译语言
     room_name = ctx.room.name
@@ -85,14 +94,15 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
     
+    logger.info(f"🔧 翻译语言: {agent.lang_code}")
+    logger.info(f"🔧 提示词内容: {agent.prompt[:50]}...")
+    logger.info(f"🔧 STT配置: 中文识别 | TTS配置: {agent.lang_code}语音合成")
+    
     # 启动会话
     await session.start(
         room=ctx.room,
         agent=agent
     )
-    
-    # 连接到房间
-    await ctx.connect()
     
     # 生成初始回复
     if room_name == ROOM_ZH:
@@ -124,6 +134,15 @@ if __name__ == "__main__":
         logger.error("❌ CARTESIA_API_KEY environment variable is required")
         exit(1)
     
+    # 获取LiveKit配置
+    LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
+    LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
+    LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
+    
+    if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+        logger.error("❌ 缺少必要的LiveKit配置")
+        exit(1)
+    
     logger.info("🚀 Starting LiveKit Agent with Groq LLM")
     logger.info(f"支持的房间:")
     logger.info(f"  - 中文原音: {ROOM_ZH}")
@@ -134,5 +153,10 @@ if __name__ == "__main__":
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint,
+            host=LIVEKIT_URL,
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            agent_name="translation-agent",
+            load_threshold=float('inf'),
         )
     ) 
