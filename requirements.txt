@@ -12,8 +12,9 @@ httpx>=0.24.0
 deepgram-sdk>=2.12.0
 cartesia>=0.1.0
 
-# 可选依赖，如果安装失败不会阻止应用运行
-# 如果需要音频支持，请安装以下依赖并确保系统已安装PortAudio库
+# 音频支持依赖
+# 如果需要音频支持，请确保系统已安装PortAudio库
 # 在Linux上: apt-get install portaudio19-dev python3-dev
 # 在macOS上: brew install portaudio
-# sounddevice>=0.4.0 
+# 在Windows上: sounddevice会自动包含PortAudio
+sounddevice>=0.4.0 
