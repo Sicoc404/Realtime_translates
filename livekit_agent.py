@@ -33,6 +33,11 @@ LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
 LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
 LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 
+# 房间名称定义
+ROOM_ZH = "room_zh"
+ROOM_KR = "room_kr"
+ROOM_VN = "room_vn"
+
 # 检查必要的API密钥
 if not GROQ_API_KEY:
     logger.error("❌ GROQ_API_KEY 未设置")
@@ -47,6 +52,11 @@ if not LIVEKIT_API_KEY:
 if not LIVEKIT_API_SECRET:
     logger.error("❌ LIVEKIT_API_SECRET 未设置")
 
+# 关键验证检查
+if not all([GROQ_API_KEY, DEEPGRAM_API_KEY, CARTESIA_API_KEY]):
+    logger.error("❌ 缺少必要的API密钥配置")
+    exit(1)
+
 
 class TranslationAgent(Agent):
     """实时翻译Agent"""
@@ -56,6 +66,11 @@ class TranslationAgent(Agent):
         self.lang_code = lang_code
         self.prompt = prompt
         logger.info(f"🤖 创建翻译Agent: {lang_code}")
+        
+    async def on_chat(self, chat: agents.Chat):
+        # 注入翻译指令到LLM上下文
+        chat.add_user_message(self.prompt)
+        await super().on_chat(chat)
 
 
 async def entrypoint(ctx: JobContext):
@@ -72,16 +87,16 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🏠 Agent加入房间: {room_name}")
     
     # 根据房间名称确定翻译类型和提示词
-    if room_name == "zh":
+    if room_name == ROOM_ZH:
         # 中文原音房间 - 直接转发原始音频
         agent_prompt = "你是一个中文语音助手，直接重复用户说的中文内容。"
         agent = TranslationAgent("zh", agent_prompt)
         logger.info("🇨🇳 设置中文原音Agent")
-    elif room_name == "kr":
+    elif room_name == ROOM_KR:
         # 韩文翻译房间
         agent = TranslationAgent("kr", KR_PROMPT)
         logger.info("🇰🇷 设置韩文翻译Agent")
-    elif room_name == "vn":
+    elif room_name == ROOM_VN:
         # 越南文翻译房间
         agent = TranslationAgent("vn", VN_PROMPT)
         logger.info("🇻🇳 设置越南文翻译Agent")
@@ -108,6 +123,9 @@ async def entrypoint(ctx: JobContext):
         )
         
         logger.info(f"🔧 创建AgentSession用于房间: {room_name}")
+        logger.info(f"🔧 翻译语言: {agent.lang_code}")
+        logger.info(f"🔧 提示词内容: {agent.prompt[:50]}...")
+        logger.info(f"🔧 STT配置: 中文识别 | TTS配置: {agent.lang_code}语音合成")
         
         # 启动会话
         await session.start(
@@ -120,11 +138,11 @@ async def entrypoint(ctx: JobContext):
         
         # 生成初始回复（可选）
         try:
-            if room_name == "kr":
+            if room_name == ROOM_KR:
                 await session.generate_reply(
                     instructions="房间已准备好进行中文到韩文的实时翻译。"
                 )
-            elif room_name == "vn":
+            elif room_name == ROOM_VN:
                 await session.generate_reply(
                     instructions="房间已准备好进行中文到越南文的实时翻译。"
                 )
@@ -146,8 +164,10 @@ if __name__ == "__main__":
     # 创建工作器选项，确保使用正确的环境变量
     worker_options = WorkerOptions(
         entrypoint_fnc=entrypoint,
-        # 使用环境变量中的LIVEKIT_URL
-        livekit_url=LIVEKIT_URL,
+        # 使用环境变量中的LiveKit配置
+        host=LIVEKIT_URL,  # 参数名改为host
+        api_key=LIVEKIT_API_KEY,
+        api_secret=LIVEKIT_API_SECRET,
         # 设置Agent名称以启用显式调度
         agent_name="translation-agent",
         # 开发模式设置
