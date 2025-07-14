@@ -2,11 +2,8 @@ import os
 import json
 import asyncio
 import logging
-import sounddevice as sd
-import websockets
-import numpy as np
-from typing import Callable, Optional, Dict, Any
 from datetime import datetime
+import warnings
 
 # 设置日志记录
 logging.basicConfig(
@@ -21,6 +18,18 @@ logger = logging.getLogger("deepgram_client")
 
 # 全局变量存储DeepgramClient实例
 deepgram_client = None
+
+# 尝试导入可选依赖
+try:
+    import sounddevice as sd
+    import numpy as np
+    import websockets
+    HAS_AUDIO_SUPPORT = True
+    logger.info("✅ 音频支持已启用 (sounddevice, numpy, websockets)")
+except ImportError as e:
+    HAS_AUDIO_SUPPORT = False
+    logger.warning(f"⚠️ 音频支持已禁用: {str(e)}")
+    logger.warning("⚠️ 将使用模拟模式，不会处理实际音频")
 
 class DeepgramClient:
     """
@@ -42,13 +51,14 @@ class DeepgramClient:
     def __init__(
         self, 
         api_key: str, 
-        on_transcript: Callable[[str], None],
+        on_transcript: callable,
         language: str = "zh-CN",
         model: str = "nova-2",
         interim_results: bool = True,
         punctuate: bool = True,
         endpointing: bool = True,
-        device_index: Optional[int] = None
+        device_index: int = None,
+        simulation_mode: bool = False
     ):
         """
         初始化Deepgram客户端
@@ -62,6 +72,7 @@ class DeepgramClient:
             punctuate: 是否添加标点符号
             endpointing: 是否启用语音端点检测
             device_index: 输入设备索引，None表示默认设备
+            simulation_mode: 是否使用模拟模式（无音频设备环境）
         """
         self.api_key = api_key
         self.on_transcript = on_transcript
@@ -71,6 +82,7 @@ class DeepgramClient:
         self.punctuate = punctuate
         self.endpointing = endpointing
         self.device_index = device_index
+        self.simulation_mode = simulation_mode or not HAS_AUDIO_SUPPORT
         
         self.ws = None
         self.audio_stream = None
@@ -78,12 +90,19 @@ class DeepgramClient:
         self.last_transcript = ""
         
         # 检查API密钥
-        if not self.api_key:
+        if not self.api_key and not self.simulation_mode:
             logger.error("Deepgram API密钥未提供")
             raise ValueError("Deepgram API密钥未提供，请确保环境变量DEEPGRAM_API_KEY已设置")
+        
+        if self.simulation_mode:
+            logger.warning("⚠️ Deepgram客户端运行在模拟模式，不会处理实际音频")
     
     async def _connect_websocket(self) -> None:
         """建立到Deepgram API的WebSocket连接"""
+        if self.simulation_mode:
+            logger.info("模拟模式：跳过WebSocket连接")
+            return
+            
         try:
             # 构建查询参数
             params = {
@@ -109,15 +128,17 @@ class DeepgramClient:
             self.ws = await websockets.connect(url, extra_headers=extra_headers)
             logger.info("Deepgram WebSocket连接已建立")
             
-        except websockets.exceptions.WebSocketException as e:
+        except Exception as e:
             logger.error(f"WebSocket连接失败: {str(e)}")
             raise ConnectionError(f"无法连接到Deepgram API: {str(e)}")
-        except Exception as e:
-            logger.error(f"连接时发生未知错误: {str(e)}")
-            raise
     
     async def _listen_for_results(self) -> None:
         """监听并处理Deepgram的响应"""
+        if self.simulation_mode:
+            logger.info("模拟模式：启动模拟转写")
+            await self._run_simulation()
+            return
+            
         try:
             while self.is_running and self.ws and self.ws.open:
                 try:
@@ -131,6 +152,35 @@ class DeepgramClient:
                     # 继续监听，不中断流程
         except Exception as e:
             logger.error(f"监听过程中发生错误: {str(e)}")
+        finally:
+            self.is_running = False
+    
+    async def _run_simulation(self) -> None:
+        """在模拟模式下运行，生成模拟的转写结果"""
+        sample_texts = [
+            "你好，这是一个测试。",
+            "欢迎使用实时翻译系统。",
+            "这个系统可以将中文翻译成韩文和越南文。",
+            "我们正在使用Groq进行翻译。",
+            "希望这个系统能够帮助到你。"
+        ]
+        
+        logger.info("🤖 模拟模式：开始生成模拟转写结果")
+        
+        try:
+            while self.is_running:
+                for text in sample_texts:
+                    if not self.is_running:
+                        break
+                    
+                    # 调用转写回调
+                    self.on_transcript(text)
+                    logger.info(f"📝 模拟转写: {text}")
+                    
+                    # 等待一段时间
+                    await asyncio.sleep(10)  # 每10秒生成一条模拟转写
+        except Exception as e:
+            logger.error(f"模拟过程中发生错误: {str(e)}")
         finally:
             self.is_running = False
     
@@ -173,6 +223,9 @@ class DeepgramClient:
         
         此函数由sounddevice的InputStream调用
         """
+        if self.simulation_mode:
+            return
+            
         if status:
             logger.warning(f"音频采集状态: {status}")
             
@@ -184,13 +237,14 @@ class DeepgramClient:
                 
                 # 发送音频数据
                 await self.ws.send(audio_data)
-            except websockets.exceptions.ConnectionClosed:
-                logger.warning("发送音频时WebSocket已关闭")
             except Exception as e:
                 logger.error(f"发送音频数据时出错: {str(e)}")
     
-    def _get_audio_devices(self) -> Dict[int, str]:
+    def _get_audio_devices(self) -> dict:
         """获取可用的音频输入设备"""
+        if self.simulation_mode:
+            return {"simulation": "模拟音频设备"}
+            
         devices = {}
         try:
             device_list = sd.query_devices()
@@ -204,6 +258,10 @@ class DeepgramClient:
     
     def list_audio_devices(self) -> None:
         """列出所有可用的音频输入设备"""
+        if self.simulation_mode:
+            logger.info("模拟模式：使用模拟音频设备")
+            return
+            
         devices = self._get_audio_devices()
         if devices:
             logger.info("可用的音频输入设备:")
@@ -222,7 +280,7 @@ class DeepgramClient:
             # 显示可用设备信息
             self.list_audio_devices()
             
-            # 连接WebSocket
+            # 连接WebSocket（如果不是模拟模式）
             await self._connect_websocket()
             
             # 标记为运行状态
@@ -231,24 +289,28 @@ class DeepgramClient:
             # 启动结果监听任务
             listen_task = asyncio.create_task(self._listen_for_results())
             
-            # 设置音频输入回调
-            audio_callback = lambda indata, frames, time, status: asyncio.create_task(
-                self._audio_callback(indata, frames, time, status)
-            )
-            
-            # 启动音频采集流
-            logger.info("启动音频采集...")
-            self.audio_stream = sd.InputStream(
-                callback=audio_callback,
-                channels=self.CHANNELS,
-                samplerate=self.SAMPLE_RATE,
-                dtype=self.DTYPE,
-                blocksize=self.CHUNK_SIZE,
-                device=self.device_index
-            )
-            self.audio_stream.start()
-            
-            logger.info(f"Deepgram实时转写已启动，语言: {self.language}, 模型: {self.model}")
+            # 如果不是模拟模式，启动音频采集
+            if not self.simulation_mode and HAS_AUDIO_SUPPORT:
+                # 设置音频输入回调
+                audio_callback = lambda indata, frames, time, status: asyncio.create_task(
+                    self._audio_callback(indata, frames, time, status)
+                )
+                
+                # 启动音频采集流
+                logger.info("启动音频采集...")
+                self.audio_stream = sd.InputStream(
+                    callback=audio_callback,
+                    channels=self.CHANNELS,
+                    samplerate=self.SAMPLE_RATE,
+                    dtype=self.DTYPE,
+                    blocksize=self.CHUNK_SIZE,
+                    device=self.device_index
+                )
+                self.audio_stream.start()
+                
+                logger.info(f"Deepgram实时转写已启动，语言: {self.language}, 模型: {self.model}")
+            else:
+                logger.info("模拟模式：跳过音频采集，使用模拟数据")
             
             # 等待结果监听任务完成
             await listen_task
@@ -256,9 +318,9 @@ class DeepgramClient:
         except Exception as e:
             logger.error(f"启动流程时发生错误: {str(e)}")
             self.is_running = False
-            if self.ws:
+            if self.ws and not self.simulation_mode:
                 await self.ws.close()
-            if self.audio_stream:
+            if self.audio_stream and not self.simulation_mode:
                 self.audio_stream.stop()
                 self.audio_stream.close()
                 
@@ -274,24 +336,28 @@ class DeepgramClient:
         logger.info("正在停止Deepgram实时转写...")
         self.is_running = False
         
-        # 关闭音频流
-        if self.audio_stream:
-            try:
-                self.audio_stream.stop()
-                self.audio_stream.close()
-                self.audio_stream = None
-                logger.info("音频流已关闭")
-            except Exception as e:
-                logger.error(f"关闭音频流时出错: {str(e)}")
-        
-        # 关闭WebSocket连接
-        if self.ws:
-            try:
-                await self.ws.close()
-                self.ws = None
-                logger.info("WebSocket连接已关闭")
-            except Exception as e:
-                logger.error(f"关闭WebSocket时出错: {str(e)}")
+        # 如果不是模拟模式，关闭音频流和WebSocket
+        if not self.simulation_mode:
+            # 关闭音频流
+            if self.audio_stream:
+                try:
+                    self.audio_stream.stop()
+                    self.audio_stream.close()
+                    self.audio_stream = None
+                    logger.info("音频流已关闭")
+                except Exception as e:
+                    logger.error(f"关闭音频流时出错: {str(e)}")
+            
+            # 关闭WebSocket连接
+            if self.ws:
+                try:
+                    await self.ws.close()
+                    self.ws = None
+                    logger.info("WebSocket连接已关闭")
+                except Exception as e:
+                    logger.error(f"关闭WebSocket时出错: {str(e)}")
+        else:
+            logger.info("模拟模式：停止模拟转写")
                 
         logger.info("Deepgram实时转写已停止")
 
@@ -312,8 +378,16 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
     # 获取Deepgram API密钥
     api_key = os.environ.get("DEEPGRAM_API_KEY")
     if not api_key:
-        logger.error("❌ 未设置DEEPGRAM_API_KEY环境变量")
-        raise ValueError("未设置DEEPGRAM_API_KEY环境变量")
+        logger.warning("⚠️ 未设置DEEPGRAM_API_KEY环境变量，将使用模拟模式")
+    
+    # 检查是否强制使用模拟模式
+    force_simulation = os.environ.get("FORCE_SIMULATION", "false").lower() == "true"
+    
+    # 确定是否使用模拟模式
+    use_simulation = force_simulation or not HAS_AUDIO_SUPPORT or not api_key
+    
+    if use_simulation:
+        logger.warning("⚠️ 使用模拟模式运行Deepgram客户端")
     
     # 定义转写回调函数
     def handle_transcript(text):
@@ -346,7 +420,8 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
             model="nova-2",
             interim_results=True,
             punctuate=True,
-            endpointing=True
+            endpointing=True,
+            simulation_mode=use_simulation
         )
         
         # 启动异步任务来启动流
