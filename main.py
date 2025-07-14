@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from typing import Dict, Any
 import pathlib
 import logging  # 添加logging模块
+import sys  # 添加sys模块
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, Request
@@ -17,8 +18,6 @@ from pydantic import BaseModel
 
 from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
-from console_output import setup_subtitle_handlers, start_api
-
 # 设置日志
 logger = logging.getLogger("translation_service")
 logging.basicConfig(
@@ -26,8 +25,26 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# 打印Python版本和路径信息
+logger.info(f"Python版本: {sys.version}")
+logger.info(f"Python路径: {sys.path}")
+
 # 加载环境变量
 load_dotenv()
+logger.info("环境变量已加载")
+
+# 检查关键环境变量
+groq_api_key = os.environ.get("GROQ_API_KEY", "")
+if groq_api_key:
+    logger.info("✅ GROQ_API_KEY已设置")
+else:
+    logger.warning("⚠️ GROQ_API_KEY未设置")
+
+deepgram_api_key = os.environ.get("DEEPGRAM_API_KEY", "")
+if deepgram_api_key:
+    logger.info("✅ DEEPGRAM_API_KEY已设置")
+else:
+    logger.warning("⚠️ DEEPGRAM_API_KEY未设置")
 
 # LiveKit 配置
 LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "wss://your-livekit-server.com")
@@ -58,17 +75,35 @@ async def lifespan(app: FastAPI):
     logger.info("🤖 Agent服务已启动，可以处理翻译请求")
     
     # 启动字幕处理器
-    on_kr, on_vn = setup_subtitle_handlers()
+    try:
+        logger.info("正在导入console_output模块...")
+        from console_output import setup_subtitle_handlers, start_api
+        logger.info("成功导入console_output模块")
+        
+        logger.info("正在设置字幕处理器...")
+        on_kr, on_vn = setup_subtitle_handlers()
+        logger.info("✅ 字幕处理器设置成功")
+    except Exception as e:
+        logger.error(f"❌ 设置字幕处理器失败: {str(e)}")
+        on_kr = on_vn = lambda text: None  # 使用空函数作为回退
     
     # 启动翻译服务
     try:
+        logger.info("正在导入session_factory模块...")
         from session_factory import create_agent_session
+        logger.info("成功导入session_factory模块")
+        
+        logger.info("正在导入deepgram_client模块...")
         from deepgram_client import setup_deepgram_client
+        logger.info("成功导入deepgram_client模块")
         
         # 创建Agent会话
+        logger.info("正在创建Agent会话...")
         agent_session = create_agent_session()
+        logger.info("✅ Agent会话创建成功")
         
         # 设置Deepgram客户端
+        logger.info("正在设置Deepgram客户端...")
         setup_deepgram_client(
             on_kr_translation=on_kr,
             on_vn_translation=on_vn,
@@ -76,18 +111,30 @@ async def lifespan(app: FastAPI):
         )
         
         logger.info("✅ 翻译服务已成功启动")
+    except ImportError as e:
+        logger.error(f"❌ 导入模块失败: {str(e)}")
+        logger.error(f"❌ 模块搜索路径: {sys.path}")
     except Exception as e:
         logger.error(f"❌ 启动翻译服务失败: {str(e)}")
+        import traceback
+        logger.error(f"❌ 错误详情: {traceback.format_exc()}")
     
     # 启动心跳更新任务
-    heartbeat_task = asyncio.create_task(update_heartbeat())
+    try:
+        logger.info("正在启动心跳更新任务...")
+        heartbeat_task = asyncio.create_task(update_heartbeat())
+        logger.info("✅ 心跳更新任务已启动")
+    except Exception as e:
+        logger.error(f"❌ 启动心跳更新任务失败: {str(e)}")
+        heartbeat_task = None
     
     yield  # 服务运行中...
     
     # ⚙️ Shutdown
     logger.info("⚙️ 正在关闭Web服务...")
     is_service_running = False
-    heartbeat_task.cancel()
+    if heartbeat_task:
+        heartbeat_task.cancel()
     logger.info("Web服务已关闭")
 
 # ⚙️ Initialize FastAPI with lifespan
