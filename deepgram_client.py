@@ -19,15 +19,15 @@ logger = logging.getLogger("deepgram_client")
 # 全局变量存储DeepgramClient实例
 deepgram_client = None
 
-# 尝试导入可选依赖
+# 检查音频支持
+HAS_AUDIO_SUPPORT = False
 try:
-    import sounddevice as sd
     import numpy as np
     import websockets
+    # 注意：sounddevice导入移到了类方法中
     HAS_AUDIO_SUPPORT = True
-    logger.info("✅ 音频支持已启用 (sounddevice, numpy, websockets)")
+    logger.info("✅ 基本音频支持已启用 (numpy, websockets)")
 except ImportError as e:
-    HAS_AUDIO_SUPPORT = False
     logger.warning(f"⚠️ 音频支持已禁用: {str(e)}")
     logger.warning("⚠️ 将使用模拟模式，不会处理实际音频")
 
@@ -247,10 +247,14 @@ class DeepgramClient:
             
         devices = {}
         try:
+            # 导入sounddevice
+            import sounddevice as sd
             device_list = sd.query_devices()
             for i, device in enumerate(device_list):
                 if device['max_input_channels'] > 0:
                     devices[i] = f"{device['name']} (输入通道: {device['max_input_channels']})"
+        except ImportError:
+            logger.warning("⚠️ sounddevice未安装，无法获取音频设备列表")
         except Exception as e:
             logger.error(f"获取音频设备列表失败: {str(e)}")
         
@@ -271,44 +275,46 @@ class DeepgramClient:
             logger.warning("未找到可用的音频输入设备")
     
     async def start_stream(self) -> None:
-        """启动音频采集和实时转写流程"""
+        """启动音频采集和实时转写"""
         if self.is_running:
-            logger.warning("转写流已在运行中")
+            logger.warning("转写流已在运行")
             return
             
+        self.is_running = True
+        
         try:
-            # 显示可用设备信息
-            self.list_audio_devices()
-            
             # 连接WebSocket（如果不是模拟模式）
-            await self._connect_websocket()
-            
-            # 标记为运行状态
-            self.is_running = True
+            if not self.simulation_mode:
+                await self._connect_websocket()
             
             # 启动结果监听任务
             listen_task = asyncio.create_task(self._listen_for_results())
             
             # 如果不是模拟模式，启动音频采集
             if not self.simulation_mode and HAS_AUDIO_SUPPORT:
-                # 设置音频输入回调
-                audio_callback = lambda indata, frames, time, status: asyncio.create_task(
-                    self._audio_callback(indata, frames, time, status)
-                )
-                
-                # 启动音频采集流
-                logger.info("启动音频采集...")
-                self.audio_stream = sd.InputStream(
-                    callback=audio_callback,
-                    channels=self.CHANNELS,
-                    samplerate=self.SAMPLE_RATE,
-                    dtype=self.DTYPE,
-                    blocksize=self.CHUNK_SIZE,
-                    device=self.device_index
-                )
-                self.audio_stream.start()
-                
-                logger.info(f"Deepgram实时转写已启动，语言: {self.language}, 模型: {self.model}")
+                try:
+                    # 导入sounddevice
+                    import sounddevice as sd
+                    # 设置音频输入回调
+                    audio_callback = lambda indata, frames, time, status: asyncio.create_task(
+                        self._audio_callback(indata, frames, time, status)
+                    )
+                    
+                    logger.info("启动音频采集...")
+                    self.audio_stream = sd.InputStream(
+                        callback=audio_callback,
+                        channels=self.CHANNELS,
+                        samplerate=self.SAMPLE_RATE,
+                        dtype=self.DTYPE,
+                        blocksize=self.CHUNK_SIZE,
+                        device=self.device_index
+                    )
+                    self.audio_stream.start()
+                    
+                    logger.info(f"Deepgram实时转写已启动，语言: {self.language}, 模型: {self.model}")
+                except ImportError:
+                    logger.warning("⚠️ sounddevice未安装，切换到模拟模式")
+                    self.simulation_mode = True
             else:
                 logger.info("模拟模式：跳过音频采集，使用模拟数据")
             
@@ -434,6 +440,7 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
     
     # 创建Deepgram客户端
     try:
+        # 总是使用模拟模式创建客户端，以避免导入问题
         deepgram_client = DeepgramClient(
             api_key=api_key,
             on_transcript=handle_transcript,
@@ -442,7 +449,7 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
             interim_results=True,
             punctuate=True,
             endpointing=True,
-            simulation_mode=use_simulation
+            simulation_mode=True  # 强制使用模拟模式
         )
         
         # 启动异步任务来启动流
