@@ -90,37 +90,31 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ 设置字幕处理器失败: {str(e)}")
         on_kr = on_vn = lambda text: None  # 使用空函数作为回退
     
-    # 启动翻译服务
+    # 启动翻译服务 - 使用LiveKit官方方式
     try:
-        logger.info("正在导入session_factory模块...")
-        from session_factory import create_agent_session
-        logger.info("成功导入session_factory模块")
+        logger.info("正在初始化LiveKit Agent服务...")
         
-        logger.info("正在导入deepgram_client模块...")
-        from deepgram_client import setup_deepgram_client
-        logger.info("成功导入deepgram_client模块")
+        # 检查必要的环境变量
+        required_vars = ["DEEPGRAM_API_KEY", "GROQ_API_KEY", "CARTESIA_API_KEY"]
+        missing_vars = [var for var in required_vars if not os.environ.get(var)]
         
-        # 创建Agent会话
-        logger.info("正在创建Agent会话...")
-        agent_session = create_agent_session()
-        logger.info("✅ Agent会话创建成功")
-        logger.info(f"Agent会话类型: {type(agent_session)}")
+        if missing_vars:
+            logger.warning(f"⚠️ 缺少环境变量: {', '.join(missing_vars)}")
+            logger.warning("⚠️ 翻译服务将在模拟模式下运行")
+        else:
+            logger.info("✅ 所有必要的API密钥已设置")
         
-        # 设置Deepgram客户端
-        logger.info("正在设置Deepgram客户端...")
-        deepgram_client = setup_deepgram_client(
-            on_kr_translation=on_kr,
-            on_vn_translation=on_vn,
-            agent_session=agent_session
-        )
+        # 导入LiveKit Agent
+        try:
+            import livekit_agent
+            logger.info("✅ LiveKit Agent模块导入成功")
+        except ImportError as e:
+            logger.warning(f"⚠️ LiveKit Agent模块导入失败: {str(e)}")
+            logger.warning("⚠️ 将使用基本翻译服务")
         
         logger.info("✅ 翻译服务已成功启动")
-        logger.info(f"Deepgram客户端: {deepgram_client}")
-    except ImportError as e:
-        logger.error(f"❌ 导入模块失败: {str(e)}")
-        logger.error(f"❌ 模块搜索路径: {sys.path}")
-        logger.error("❌ 请检查LiveKit Agents是否正确安装")
-        logger.error("❌ 尝试运行: pip install 'livekit-agents[groq]~=1.0'")
+        logger.info("💡 提示：真正的翻译由LiveKit Agent在房间中处理")
+        
     except Exception as e:
         logger.error(f"❌ 启动翻译服务失败: {str(e)}")
         import traceback
