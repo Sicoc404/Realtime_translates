@@ -19,6 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("deepgram_client")
 
+# 全局变量存储DeepgramClient实例
+deepgram_client = None
+
 class DeepgramClient:
     """
     使用WebSocket连接Deepgram实时语音转写API的客户端
@@ -292,6 +295,79 @@ class DeepgramClient:
                 
         logger.info("Deepgram实时转写已停止")
 
+
+def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
+    """
+    设置Deepgram客户端，用于处理语音转写和翻译
+    
+    Args:
+        on_kr_translation: 韩文翻译回调函数
+        on_vn_translation: 越南文翻译回调函数
+        agent_session: Agent会话对象，用于处理翻译
+    """
+    global deepgram_client
+    
+    logger.info("🔧 设置Deepgram客户端...")
+    
+    # 获取Deepgram API密钥
+    api_key = os.environ.get("DEEPGRAM_API_KEY")
+    if not api_key:
+        logger.error("❌ 未设置DEEPGRAM_API_KEY环境变量")
+        raise ValueError("未设置DEEPGRAM_API_KEY环境变量")
+    
+    # 定义转写回调函数
+    def handle_transcript(text):
+        """处理中文转写，并进行翻译"""
+        logger.info(f"📝 中文转写: {text}")
+        
+        try:
+            # 使用Agent会话进行翻译
+            # 韩文翻译
+            kr_translation = agent_session.kr_translator.generate(text)
+            if kr_translation:
+                on_kr_translation(kr_translation)
+                logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
+            
+            # 越南文翻译
+            vn_translation = agent_session.vn_translator.generate(text)
+            if vn_translation:
+                on_vn_translation(vn_translation)
+                logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
+                
+        except Exception as e:
+            logger.error(f"❌ 翻译过程中出错: {str(e)}")
+    
+    # 创建Deepgram客户端
+    try:
+        deepgram_client = DeepgramClient(
+            api_key=api_key,
+            on_transcript=handle_transcript,
+            language="zh-CN",  # 中文
+            model="nova-2",
+            interim_results=True,
+            punctuate=True,
+            endpointing=True
+        )
+        
+        # 启动异步任务来启动流
+        asyncio.create_task(start_deepgram_client())
+        
+        logger.info("✅ Deepgram客户端设置成功")
+        return deepgram_client
+    
+    except Exception as e:
+        logger.error(f"❌ 设置Deepgram客户端失败: {str(e)}")
+        raise e
+
+async def start_deepgram_client():
+    """启动Deepgram客户端"""
+    global deepgram_client
+    if deepgram_client:
+        try:
+            logger.info("🚀 启动Deepgram客户端...")
+            await deepgram_client.start_stream()
+        except Exception as e:
+            logger.error(f"❌ 启动Deepgram客户端失败: {str(e)}")
 
 # 简单的使用示例
 async def example_usage():
