@@ -18,6 +18,9 @@ from pydantic import BaseModel
 
 from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generation imports
 
+# 设置FORCE_SIMULATION环境变量，强制使用模拟模式
+os.environ["FORCE_SIMULATION"] = "true"
+
 # 设置日志
 logger = logging.getLogger("translation_service")
 logging.basicConfig(
