@@ -57,20 +57,24 @@ async def entrypoint(ctx: agents.JobContext):
     logger.info(f"🏠 Agent加入房间: {room_name}")
     
     # 根据房间名称确定翻译类型和提示词
-    if room_name == ROOM_ZH:
-        # 中文原音房间 - 不需要翻译
-        agent_prompt = "你是一个中文语音助手，直接播放原始中文语音，无需翻译。"
+    if room_name == "zh":
+        # 中文原音房间 - 直接转发原始音频
+        agent_prompt = "你是一个中文语音助手，直接重复用户说的中文内容。"
         agent = TranslationAgent("zh", agent_prompt)
-    elif room_name == ROOM_KR:
+        logger.info("🇨🇳 设置中文原音Agent")
+    elif room_name == "kr":
         # 韩文翻译房间
         agent = TranslationAgent("kr", KR_PROMPT)
-    elif room_name == ROOM_VN:
+        logger.info("🇰🇷 设置韩文翻译Agent")
+    elif room_name == "vn":
         # 越南文翻译房间
         agent = TranslationAgent("vn", VN_PROMPT)
+        logger.info("🇻🇳 设置越南文翻译Agent")
     else:
         # 默认中文房间
-        agent_prompt = "你是一个中文语音助手。"
+        agent_prompt = "你是一个中文语音助手，直接重复用户说的中文内容。"
         agent = TranslationAgent("zh", agent_prompt)
+        logger.info("🔄 设置默认中文Agent")
     
     # 创建AgentSession - 按照官方文档的STT-LLM-TTS管道
     session = AgentSession(
@@ -87,16 +91,39 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
     
+    logger.info(f"🔧 创建AgentSession用于房间: {room_name}")
+    
     # 启动会话
     await session.start(
         room=ctx.room,
         agent=agent
     )
     
+    logger.info(f"▶️ AgentSession已启动用于房间: {room_name}")
+    
     # 连接到房间
     await ctx.connect()
     
     logger.info(f"✅ Agent已连接到房间: {room_name}")
+    logger.info(f"🎧 Agent正在监听房间 {room_name} 中的音频流...")
+    
+    # 生成初始回复（可选）
+    try:
+        if room_name == "kr":
+            await session.generate_reply(
+                instructions="房间已准备好进行中文到韩文的实时翻译。"
+            )
+        elif room_name == "vn":
+            await session.generate_reply(
+                instructions="房间已准备好进行中文到越南文的实时翻译。"
+            )
+        else:
+            await session.generate_reply(
+                instructions="中文原音房间已准备就绪。"
+            )
+        logger.info(f"🔊 已发送初始欢迎消息到房间: {room_name}")
+    except Exception as e:
+        logger.warning(f"发送初始消息失败: {str(e)}")
 
 
 # 主函数 - 用于测试
