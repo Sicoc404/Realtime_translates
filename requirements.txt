@@ -1,12 +1,19 @@
-livekit-agents[groq]~=1.0
+# 完整功能版本 - 包含Web服务和Agent服务
+livekit-agents[groq,deepgram,cartesia]>=1.1.0,<2.0.0
+livekit-api>=1.0.0,<2.0.0
 python-dotenv>=1.0.0
 rich>=13.0.0
 fastapi>=0.100.0
 uvicorn>=0.20.0
+websockets>=11.0.0
+numpy>=1.24.0
 aiohttp>=3.8.0
 httpx>=0.24.0
 deepgram-sdk>=2.12.0
 cartesia>=0.1.0
-websockets>=10.0.0
+
 # 可选依赖，如果安装失败不会阻止应用运行
-# sounddevice>=0.4.5 
+# sounddevice需要系统安装PortAudio库
+# 在Linux上: apt-get install portaudio19-dev
+# 在macOS上: brew install portaudio
+# sounddevice>=0.4.0 
