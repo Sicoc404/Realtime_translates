@@ -101,19 +101,23 @@ async def lifespan(app: FastAPI):
         logger.info("正在创建Agent会话...")
         agent_session = create_agent_session()
         logger.info("✅ Agent会话创建成功")
+        logger.info(f"Agent会话类型: {type(agent_session)}")
         
         # 设置Deepgram客户端
         logger.info("正在设置Deepgram客户端...")
-        setup_deepgram_client(
+        deepgram_client = setup_deepgram_client(
             on_kr_translation=on_kr,
             on_vn_translation=on_vn,
             agent_session=agent_session
         )
         
         logger.info("✅ 翻译服务已成功启动")
+        logger.info(f"Deepgram客户端: {deepgram_client}")
     except ImportError as e:
         logger.error(f"❌ 导入模块失败: {str(e)}")
         logger.error(f"❌ 模块搜索路径: {sys.path}")
+        logger.error("❌ 请检查LiveKit Agents是否正确安装")
+        logger.error("❌ 尝试运行: pip install 'livekit-agents[groq]~=1.0'")
     except Exception as e:
         logger.error(f"❌ 启动翻译服务失败: {str(e)}")
         import traceback
