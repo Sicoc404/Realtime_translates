@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware  # 添加CORS中间件
 import uvicorn
 from pydantic import BaseModel
 
@@ -54,13 +55,39 @@ async def lifespan(app: FastAPI):
     last_heartbeat = time.time()
     logger.info("FastAPI Web服务启动中...")
     logger.info("🌐 Web服务已启动")
-    logger.info("🤖 Agent服务需要单独启动: python agent_runner.py dev")
+    logger.info("🤖 Agent服务已启动，可以处理翻译请求")
+    
+    # 启动字幕处理器
+    on_kr, on_vn = setup_subtitle_handlers()
+    
+    # 启动翻译服务
+    try:
+        from session_factory import create_agent_session
+        from deepgram_client import setup_deepgram_client
+        
+        # 创建Agent会话
+        agent_session = create_agent_session()
+        
+        # 设置Deepgram客户端
+        setup_deepgram_client(
+            on_kr_translation=on_kr,
+            on_vn_translation=on_vn,
+            agent_session=agent_session
+        )
+        
+        logger.info("✅ 翻译服务已成功启动")
+    except Exception as e:
+        logger.error(f"❌ 启动翻译服务失败: {str(e)}")
+    
+    # 启动心跳更新任务
+    heartbeat_task = asyncio.create_task(update_heartbeat())
     
     yield  # 服务运行中...
     
     # ⚙️ Shutdown
     logger.info("⚙️ 正在关闭Web服务...")
     is_service_running = False
+    heartbeat_task.cancel()
     logger.info("Web服务已关闭")
 
 # ⚙️ Initialize FastAPI with lifespan
@@ -68,6 +95,15 @@ app = FastAPI(
     title="Real-time Translation Service", 
     version="1.0.0",
     lifespan=lifespan
+)
+
+# 添加CORS中间件，允许跨域请求
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有源，生产环境应该限制
+    allow_credentials=True,
+    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_headers=["*"],  # 允许所有HTTP头
 )
 
 # ⚙️ Mount static files
@@ -165,6 +201,9 @@ async def update_heartbeat():
 if __name__ == "__main__":
     # 获取端口号
     port = int(os.environ.get("PORT", 8000))
+    
+    # 启动翻译服务
+    logger.info("🚀 启动Agent服务...")
     
     # 启动FastAPI应用
     uvicorn.run(
