@@ -25,7 +25,11 @@ from livekit.api import AccessToken, VideoGrants  # ⚙️ LiveKit token generat
 logger = logging.getLogger("translation_service")
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("translation_service.log"),
+        logging.StreamHandler()
+    ]
 )
 
 # 打印Python版本和路径信息
@@ -58,9 +62,9 @@ LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # 房间名称
-ROOM_ZH = "room_zh"  # 中文原音房间
-ROOM_KR = "room_kr"  # 韩文翻译房间
-ROOM_VN = "room_vn"  # 越南文翻译房间
+ROOM_ZH = "zh"  # 中文房间
+ROOM_KR = "kr"  # 韩文房间
+ROOM_VN = "vn"  # 越南文房间
 
 # ⚙️ 全局变量存储服务状态
 is_service_running = False
@@ -90,30 +94,23 @@ async def lifespan(app: FastAPI):
         logger.error(f"❌ 设置字幕处理器失败: {str(e)}")
         on_kr = on_vn = lambda text: None  # 使用空函数作为回退
     
-    # 启动翻译服务 - 使用LiveKit官方方式
+    # 启动LiveKit Agent服务
     try:
-        logger.info("正在初始化LiveKit Agent服务...")
+        logger.info("正在启动LiveKit Agent服务...")
         
         # 检查必要的环境变量
-        required_vars = ["DEEPGRAM_API_KEY", "GROQ_API_KEY", "CARTESIA_API_KEY"]
+        required_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"]
         missing_vars = [var for var in required_vars if not os.environ.get(var)]
         
         if missing_vars:
-            logger.warning(f"⚠️ 缺少环境变量: {', '.join(missing_vars)}")
-            logger.warning("⚠️ 翻译服务将在模拟模式下运行")
+            logger.warning(f"⚠️ 缺少LiveKit环境变量: {', '.join(missing_vars)}")
+            logger.warning("⚠️ Agent服务将无法启动")
         else:
-            logger.info("✅ 所有必要的API密钥已设置")
-        
-        # 导入LiveKit Agent
-        try:
-            import livekit_agent
-            logger.info("✅ LiveKit Agent模块导入成功")
-        except ImportError as e:
-            logger.warning(f"⚠️ LiveKit Agent模块导入失败: {str(e)}")
-            logger.warning("⚠️ 将使用基本翻译服务")
+            # 启动Agent服务进程
+            await start_agent_services()
+            logger.info("✅ LiveKit Agent服务已启动")
         
         logger.info("✅ 翻译服务已成功启动")
-        logger.info("💡 提示：真正的翻译由LiveKit Agent在房间中处理")
         
     except Exception as e:
         logger.error(f"❌ 启动翻译服务失败: {str(e)}")
@@ -138,9 +135,67 @@ async def lifespan(app: FastAPI):
     # ⚙️ Shutdown
     logger.info("⚙️ 正在关闭Web服务...")
     is_service_running = False
+    
+    # 停止Agent服务
+    await stop_agent_services()
+    
     if heartbeat_task:
         heartbeat_task.cancel()
     logger.info("Web服务已关闭")
+
+async def start_agent_services():
+    """启动LiveKit Agent服务"""
+    global agent_processes
+    
+    try:
+        # 导入LiveKit agents
+        from livekit import agents
+        from livekit.agents import WorkerOptions
+        
+        # 导入我们的Agent入口点
+        from livekit_agent import entrypoint
+        
+        # 为每个房间启动一个Agent工作器
+        rooms = [ROOM_ZH, ROOM_KR, ROOM_VN]
+        
+        for room in rooms:
+            logger.info(f"🚀 启动Agent工作器用于房间: {room}")
+            
+            # 创建工作器选项
+            worker_options = WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                # 可以添加其他配置选项
+            )
+            
+            # 启动工作器任务
+            worker_task = asyncio.create_task(
+                agents.run_worker(worker_options)
+            )
+            
+            agent_processes[room] = worker_task
+            logger.info(f"✅ Agent工作器已启动用于房间: {room}")
+            
+    except ImportError as e:
+        logger.error(f"❌ 导入LiveKit Agent失败: {str(e)}")
+        logger.warning("⚠️ 请确保安装了livekit-agents包")
+    except Exception as e:
+        logger.error(f"❌ 启动Agent服务失败: {str(e)}")
+
+async def stop_agent_services():
+    """停止LiveKit Agent服务"""
+    global agent_processes
+    
+    logger.info("正在停止Agent服务...")
+    
+    for room, task in agent_processes.items():
+        try:
+            task.cancel()
+            logger.info(f"已停止Agent工作器: {room}")
+        except Exception as e:
+            logger.error(f"停止Agent工作器失败 {room}: {str(e)}")
+    
+    agent_processes.clear()
+    logger.info("所有Agent服务已停止")
 
 # ⚙️ Initialize FastAPI with lifespan
 app = FastAPI(
@@ -168,25 +223,13 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 # ⚙️ Health and UI routes
 @app.get("/", response_class=HTMLResponse)
 async def homepage():
-    """根路由，返回index.html页面"""
-    # ⚙️ Serving custom index.html
-    try:
-        with open("index.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        # 如果找不到index.html，返回一个简单的HTML响应
-        return """
-        <html>
-        <head><title>Real-time Translation Service</title></head>
-        <body>
-            <h1>Real-time Translation Service</h1>
-            <p>Translation service is running!</p>
-            <p>Please check if index.html exists in the project directory.</p>
-        </body>
-        </html>
-        """
+    """提供主页面"""
+    index_file = pathlib.Path(__file__).parent / "index.html"
+    if index_file.exists():
+        return HTMLResponse(content=index_file.read_text(encoding='utf-8'))
+    else:
+        return HTMLResponse(content="<h1>实时翻译服务</h1><p>index.html 文件未找到</p>")
 
-# ⚙️ Health check endpoint
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
@@ -221,26 +264,33 @@ class TokenRequest(BaseModel):
     roomName: str
     identity: str
 
-# ⚙️ LiveKit token generation endpoint
 @app.post("/token")
 async def create_token(request: TokenRequest):
-    """生成LiveKit房间Token"""
+    """生成LiveKit访问令牌"""
     try:
-        # 创建AccessToken
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
-            .with_identity(request.identity) \
-            .with_grants(VideoGrants(room_join=True, room=request.roomName)) \
-            .to_jwt()
+        # 创建访问令牌
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=request.identity)
         
-        return JSONResponse(
-            status_code=200,
-            content={"token": token}
-        )
+        # 添加视频授权
+        token.with_grants(VideoGrants(
+            room_join=True,
+            room=request.roomName,
+            can_publish=True,
+            can_subscribe=True
+        ))
+        
+        # 生成JWT令牌
+        jwt_token = token.to_jwt()
+        
+        return {
+            "token": jwt_token,
+            "url": LIVEKIT_URL,
+            "room": request.roomName,
+            "identity": request.identity
+        }
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"生成Token失败: {str(e)}"}
-        )
+        logger.error(f"生成令牌失败: {str(e)}")
+        return {"error": f"生成令牌失败: {str(e)}"}
 
 # ⚙️ Heartbeat update task
 async def update_heartbeat():
@@ -259,6 +309,7 @@ if __name__ == "__main__":
     logger.info("🚀 启动Agent服务...")
     
     # 启动FastAPI应用
+    import uvicorn
     uvicorn.run(
         app, 
         host="0.0.0.0", 
