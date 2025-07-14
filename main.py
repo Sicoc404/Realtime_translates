@@ -150,31 +150,36 @@ async def start_agent_services():
     try:
         # 导入LiveKit agents
         from livekit import agents
-        from livekit.agents import WorkerOptions
+        from livekit.agents import WorkerOptions, Worker
         
         # 导入我们的Agent入口点
         from livekit_agent import entrypoint
         
-        # 为每个房间启动一个Agent工作器
-        rooms = [ROOM_ZH, ROOM_KR, ROOM_VN]
+        logger.info("🚀 启动LiveKit Agent服务...")
         
-        for room in rooms:
-            logger.info(f"🚀 启动Agent工作器用于房间: {room}")
-            
-            # 创建工作器选项
-            worker_options = WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                # 可以添加其他配置选项
-            )
-            
-            # 启动工作器任务
-            worker_task = asyncio.create_task(
-                agents.run_worker(worker_options)
-            )
-            
-            agent_processes[room] = worker_task
-            logger.info(f"✅ Agent工作器已启动用于房间: {room}")
-            
+        # 创建工作器选项
+        worker_options = WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            # 设置Agent名称以启用显式调度
+            agent_name="translation-agent",
+            # 开发模式设置
+            load_threshold=float('inf'),  # 开发模式下不限制负载
+        )
+        
+        # 创建Worker实例
+        worker = Worker(worker_options)
+        
+        # 启动工作器任务
+        worker_task = asyncio.create_task(worker.run())
+        
+        agent_processes["translation_worker"] = {
+            "task": worker_task,
+            "worker": worker
+        }
+        
+        logger.info("✅ LiveKit Agent工作器已启动")
+        logger.info("🎧 Agent正在等待房间连接...")
+        
     except ImportError as e:
         logger.error(f"❌ 导入LiveKit Agent失败: {str(e)}")
         logger.warning("⚠️ 请确保安装了livekit-agents包")
@@ -185,17 +190,38 @@ async def stop_agent_services():
     """停止LiveKit Agent服务"""
     global agent_processes
     
-    logger.info("正在停止Agent服务...")
+    logger.info("🛑 停止Agent服务...")
     
-    for room, task in agent_processes.items():
+    for name, process_info in agent_processes.items():
         try:
-            task.cancel()
-            logger.info(f"已停止Agent工作器: {room}")
+            if isinstance(process_info, dict) and "worker" in process_info:
+                worker = process_info["worker"]
+                task = process_info["task"]
+                
+                logger.info(f"🔄 关闭Agent工作器: {name}")
+                await worker.aclose()
+                
+                if not task.cancelled():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                        
+                logger.info(f"✅ Agent工作器已停止: {name}")
+            else:
+                # 向后兼容：处理旧的任务格式
+                if hasattr(process_info, 'cancel'):
+                    process_info.cancel()
+                    try:
+                        await process_info
+                    except asyncio.CancelledError:
+                        pass
         except Exception as e:
-            logger.error(f"停止Agent工作器失败 {room}: {str(e)}")
+            logger.error(f"❌ 停止Agent工作器失败 {name}: {str(e)}")
     
     agent_processes.clear()
-    logger.info("所有Agent服务已停止")
+    logger.info("🏁 所有Agent服务已停止")
 
 # ⚙️ Initialize FastAPI with lifespan
 app = FastAPI(
