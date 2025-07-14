@@ -113,6 +113,7 @@ class DeepgramClient:
                 "channels": self.CHANNELS,
                 "interim_results": "true" if self.interim_results else "false",
                 "punctuate": "true" if self.punctuate else "false",
+                "token": self.api_key  # 将API密钥直接放在URL参数中
             }
             
             if self.endpointing:
@@ -123,9 +124,10 @@ class DeepgramClient:
             url = f"{self.DEEPGRAM_URL}?{query}"
             
             # 连接WebSocket
-            logger.info(f"正在连接Deepgram WebSocket: {url}")
-            extra_headers = {"Authorization": f"Token {self.api_key}"}
-            self.ws = await websockets.connect(url, extra_headers=extra_headers)
+            logger.info(f"正在连接Deepgram WebSocket...")
+            
+            # 使用简单的websockets连接，不需要额外的头部
+            self.ws = await websockets.connect(url)
             logger.info("Deepgram WebSocket连接已建立")
             
         except Exception as e:
