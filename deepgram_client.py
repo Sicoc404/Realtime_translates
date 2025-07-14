@@ -401,33 +401,21 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
         logger.info(f"📝 中文转写: {text}")
         
         try:
-            # 使用Agent会话进行翻译
+            # 简单的模拟翻译逻辑
             # 韩文翻译
-            kr_translator = agent_session["kr_translator"]
+            kr_translator = agent_session.get("kr_translator")
             if kr_translator:
-                # 使用LiveKit Groq LLM进行翻译
-                kr_response = kr_translator.chat(
-                    messages=[
-                        {"role": "system", "content": "你是一个专业的中文到韩文翻译器。请将以下中文文本翻译成韩文，保持原意不变。"},
-                        {"role": "user", "content": text}
-                    ]
-                )
-                kr_translation = kr_response.choices[0].message.content
+                # 使用简单的模拟翻译
+                kr_translation = f"[KR] {text}"  # 模拟韩文翻译
                 if kr_translation:
                     on_kr_translation(kr_translation)
                     logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
             
             # 越南文翻译
-            vn_translator = agent_session["vn_translator"]
+            vn_translator = agent_session.get("vn_translator")
             if vn_translator:
-                # 使用LiveKit Groq LLM进行翻译
-                vn_response = vn_translator.chat(
-                    messages=[
-                        {"role": "system", "content": "你是一个专业的中文到越南文翻译器。请将以下中文文本翻译成越南文，保持原意不变。"},
-                        {"role": "user", "content": text}
-                    ]
-                )
-                vn_translation = vn_response.choices[0].message.content
+                # 使用简单的模拟翻译
+                vn_translation = f"[VN] {text}"  # 模拟越南文翻译
                 if vn_translation:
                     on_vn_translation(vn_translation)
                     logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
