@@ -10,7 +10,7 @@ import logging
 from dotenv import load_dotenv
 
 from livekit import agents
-from livekit.agents import Agent, AgentSession, JobContext
+from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions
 from livekit.plugins import groq, deepgram, cartesia
 
 from translation_prompts import KR_PROMPT, VN_PROMPT
@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "")
 CARTESIA_API_KEY = os.environ.get("CARTESIA_API_KEY", "")
+LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
 
 # 检查必要的API密钥
 if not GROQ_API_KEY:
@@ -37,6 +40,12 @@ if not DEEPGRAM_API_KEY:
     logger.error("❌ DEEPGRAM_API_KEY 未设置")
 if not CARTESIA_API_KEY:
     logger.error("❌ CARTESIA_API_KEY 未设置")
+if not LIVEKIT_URL:
+    logger.error("❌ LIVEKIT_URL 未设置")
+if not LIVEKIT_API_KEY:
+    logger.error("❌ LIVEKIT_API_KEY 未设置")
+if not LIVEKIT_API_SECRET:
+    logger.error("❌ LIVEKIT_API_SECRET 未设置")
 
 
 class TranslationAgent(Agent):
@@ -134,4 +143,14 @@ async def entrypoint(ctx: JobContext):
 
 # 主函数 - 用于测试
 if __name__ == "__main__":
-    agents.cli.run_app(agents.WorkerOptions(entrypoint_fnc=entrypoint)) 
+    # 创建工作器选项，确保使用正确的环境变量
+    worker_options = WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        # 使用环境变量中的LIVEKIT_URL
+        livekit_url=LIVEKIT_URL,
+        # 设置Agent名称以启用显式调度
+        agent_name="translation-agent",
+        # 开发模式设置
+        load_threshold=float('inf'),  # 开发模式下不限制负载
+    )
+    agents.cli.run_app(worker_options) 
