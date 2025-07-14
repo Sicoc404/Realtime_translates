@@ -67,10 +67,10 @@ class TranslationAgent(Agent):
         self.prompt = prompt
         logger.info(f"🤖 创建翻译Agent: {lang_code}")
         
-    async def on_chat(self, chat: agents.Chat):
+    async def on_message(self, message: str) -> str:
+        """处理用户消息并返回翻译后的内容"""
         # 注入翻译指令到LLM上下文
-        chat.add_user_message(self.prompt)
-        await super().on_chat(chat)
+        return f"{self.prompt}\n\n用户输入: {message}"
 
 
 async def entrypoint(ctx: JobContext):
