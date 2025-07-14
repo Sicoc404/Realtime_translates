@@ -166,11 +166,21 @@ async def start_agent_services():
         
         logger.info("🚀 启动LiveKit Agent服务...")
         
+        # 获取LiveKit配置
+        livekit_url = os.environ.get("LIVEKIT_URL", "")
+        if not livekit_url:
+            logger.error("❌ LIVEKIT_URL环境变量未设置，无法启动Agent服务")
+            return
+            
+        logger.info(f"🔗 连接到LiveKit服务器: {livekit_url}")
+        
         # 创建工作器选项
         worker_options = WorkerOptions(
             entrypoint_fnc=entrypoint,
             # 设置Agent名称以启用显式调度
             agent_name="translation-agent",
+            # 使用环境变量中的LiveKit URL
+            livekit_url=livekit_url,
             # 开发模式设置
             load_threshold=float('inf'),  # 开发模式下不限制负载
         )
@@ -194,6 +204,8 @@ async def start_agent_services():
         logger.warning("⚠️ 请确保安装了livekit-agents包")
     except Exception as e:
         logger.error(f"❌ 启动Agent服务失败: {str(e)}")
+        import traceback
+        logger.error(f"❌ 错误详情: {traceback.format_exc()}")
 
 async def stop_agent_services():
     """停止LiveKit Agent服务"""
