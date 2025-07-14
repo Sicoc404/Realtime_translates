@@ -61,10 +61,18 @@ LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开
 # Groq API 密钥
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
-# 房间名称
-ROOM_ZH = "zh"  # 中文房间
-ROOM_KR = "kr"  # 韩文房间
-ROOM_VN = "vn"  # 越南文房间
+# 房间名称 - 简化版本，与前端保持一致
+ROOM_ZH = "zh"    # 中文原音房间
+ROOM_KR = "kr"    # 韩文翻译房间  
+ROOM_VN = "vn"    # 越南文翻译房间
+
+# 注释掉旧的导入，现在只使用LiveKit Agent系统
+# 旧系统：
+# from deepgram_client import setup_deepgram_client, start_deepgram_client
+# from integrated_translation_system import TranslationSystem
+
+# ✅ 新系统：只使用LiveKit Agent
+# Agent系统会自动处理STT-LLM-TTS管道，无需手动管理Deepgram连接
 
 # ⚙️ 全局变量存储服务状态
 is_service_running = False
