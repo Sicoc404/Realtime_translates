@@ -69,9 +69,19 @@ vn_subtitle_global = ""
 try:
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
+    from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
     
     app = FastAPI(title="实时翻译字幕API")
+    
+    # 添加CORS中间件，允许跨域请求
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 允许所有源，生产环境应该限制
+        allow_credentials=True,
+        allow_methods=["*"],  # 允许所有HTTP方法
+        allow_headers=["*"],  # 允许所有HTTP头
+    )
     
     @app.get("/subtitles/kr")
     async def get_kr_subtitles():
@@ -83,12 +93,28 @@ try:
         """获取越南文字幕"""
         return JSONResponse({"text": vn_subtitle_global, "lang": "vn"})
     
+    @app.get("/subtitles")
+    async def get_all_subtitles():
+        """获取所有字幕"""
+        return JSONResponse({
+            "kr": {"text": kr_subtitle_global, "lang": "kr"},
+            "vn": {"text": vn_subtitle_global, "lang": "vn"}
+        })
+    
+    @app.get("/health")
+    async def health_check():
+        """健康检查端点"""
+        return JSONResponse({"status": "healthy"})
+    
     def start_api_server():
         """启动FastAPI服务器"""
-        uvicorn.run(app, host="0.0.0.0", port=8000)
+        import os
+        port = int(os.environ.get("PORT", 8000))
+        uvicorn.run(app, host="0.0.0.0", port=port)
     
     # 在单独的线程中启动API服务器
     def start_api():
+        import os
         api_thread = threading.Thread(target=start_api_server)
         api_thread.daemon = True
         api_thread.start()
