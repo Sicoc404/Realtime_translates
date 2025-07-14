@@ -1,6 +1,7 @@
 import logging
 import os
-from livekit.agents import llm, AgentSession
+# 移除对livekit.agents的依赖
+# from livekit.agents import llm, AgentSession
 # ⚙️ Use Groq LLM from livekit.plugins.groq per docs
 from livekit.plugins import groq
 from livekit import rtc
@@ -14,6 +15,23 @@ from translation_prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 创建自定义的AgentSession类，替代livekit.agents.AgentSession
+class AgentSession:
+    """
+    自定义Agent会话类，用于管理翻译器
+    """
+    def __init__(self, kr_translator=None, vn_translator=None):
+        """
+        初始化Agent会话
+        
+        Args:
+            kr_translator: 韩文翻译器
+            vn_translator: 越南文翻译器
+        """
+        self.kr_translator = kr_translator
+        self.vn_translator = vn_translator
+        logger.info("✅ 自定义AgentSession创建成功")
 
 def create_groq_llm(
     lang_code: str,
@@ -124,6 +142,62 @@ async def create_session(
         model=model
     )
 
+# 创建自定义的GroqTranslator类，简化Groq LLM的使用
+class GroqTranslator:
+    """
+    Groq翻译器，封装Groq LLM的翻译功能
+    """
+    def __init__(self, api_key, system_prompt, model="llama3-8b-8192"):
+        """
+        初始化Groq翻译器
+        
+        Args:
+            api_key: Groq API密钥
+            system_prompt: 系统提示词
+            model: 使用的模型名称
+        """
+        self.api_key = api_key
+        self.system_prompt = system_prompt
+        self.model = model
+        
+        # 初始化Groq客户端
+        import groq
+        self.client = groq.Groq(api_key=api_key)
+        logger.info(f"✅ Groq翻译器初始化成功，模型: {model}")
+    
+    def generate(self, text):
+        """
+        生成翻译
+        
+        Args:
+            text: 待翻译的文本
+            
+        Returns:
+            str: 翻译结果
+        """
+        try:
+            # 构建提示词
+            prompt = f"{self.system_prompt}\n\n原文: {text}\n\n翻译:"
+            
+            # 调用Groq API
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=1000,
+                temperature=0.3,
+            )
+            
+            # 提取翻译结果
+            translation = completion.choices[0].message.content
+            return translation.strip()
+            
+        except Exception as e:
+            logger.error(f"❌ 翻译失败: {e}")
+            return f"[翻译错误: {str(e)}]"
+
 def create_agent_session() -> AgentSession:
     """
     创建Agent会话，用于处理翻译请求
@@ -139,17 +213,17 @@ def create_agent_session() -> AgentSession:
         if not groq_api_key:
             raise ValueError("未设置GROQ_API_KEY环境变量")
         
-        # 创建Groq LLM实例
-        groq_llm_kr = groq.LLM(
-            model="llama3-8b-8192",
+        # 创建翻译器实例
+        groq_llm_kr = GroqTranslator(
             api_key=groq_api_key,
-            system_prompt=KR_PROMPT
+            system_prompt=KR_PROMPT,
+            model="llama3-8b-8192"
         )
         
-        groq_llm_vn = groq.LLM(
-            model="llama3-8b-8192",
+        groq_llm_vn = GroqTranslator(
             api_key=groq_api_key,
-            system_prompt=VN_PROMPT
+            system_prompt=VN_PROMPT,
+            model="llama3-8b-8192"
         )
         
         # 创建Agent会话
