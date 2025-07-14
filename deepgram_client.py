@@ -397,19 +397,40 @@ def setup_deepgram_client(on_kr_translation, on_vn_translation, agent_session):
         try:
             # 使用Agent会话进行翻译
             # 韩文翻译
-            kr_translation = agent_session.kr_translator.generate(text)
-            if kr_translation:
-                on_kr_translation(kr_translation)
-                logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
+            kr_translator = agent_session["kr_translator"]
+            if kr_translator:
+                # 使用LiveKit Groq LLM进行翻译
+                kr_response = kr_translator.chat(
+                    messages=[
+                        {"role": "system", "content": "你是一个专业的中文到韩文翻译器。请将以下中文文本翻译成韩文，保持原意不变。"},
+                        {"role": "user", "content": text}
+                    ]
+                )
+                kr_translation = kr_response.choices[0].message.content
+                if kr_translation:
+                    on_kr_translation(kr_translation)
+                    logger.info(f"🇰🇷 韩文翻译: {kr_translation}")
             
             # 越南文翻译
-            vn_translation = agent_session.vn_translator.generate(text)
-            if vn_translation:
-                on_vn_translation(vn_translation)
-                logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
+            vn_translator = agent_session["vn_translator"]
+            if vn_translator:
+                # 使用LiveKit Groq LLM进行翻译
+                vn_response = vn_translator.chat(
+                    messages=[
+                        {"role": "system", "content": "你是一个专业的中文到越南文翻译器。请将以下中文文本翻译成越南文，保持原意不变。"},
+                        {"role": "user", "content": text}
+                    ]
+                )
+                vn_translation = vn_response.choices[0].message.content
+                if vn_translation:
+                    on_vn_translation(vn_translation)
+                    logger.info(f"🇻🇳 越南文翻译: {vn_translation}")
                 
         except Exception as e:
             logger.error(f"❌ 翻译过程中出错: {str(e)}")
+            # 提供错误回调
+            on_kr_translation(f"[翻译错误: {str(e)}]")
+            on_vn_translation(f"[翻译错误: {str(e)}]")
     
     # 创建Deepgram客户端
     try:
