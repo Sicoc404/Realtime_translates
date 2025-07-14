@@ -1,5 +1,6 @@
 import logging
-from livekit.agents import llm
+import os
+from livekit.agents import llm, AgentSession
 # ⚙️ Use Groq LLM from livekit.plugins.groq per docs
 from livekit.plugins import groq
 from livekit import rtc
@@ -121,4 +122,46 @@ async def create_session(
         openai_api_key=openai_api_key,
         text_callback=text_callback,
         model=model
-    ) 
+    )
+
+def create_agent_session() -> AgentSession:
+    """
+    创建Agent会话，用于处理翻译请求
+    
+    Returns:
+        AgentSession: 配置好的Agent会话
+    """
+    try:
+        logger.info("🔧 创建Agent会话...")
+        
+        # 获取环境变量
+        groq_api_key = os.environ.get("GROQ_API_KEY")
+        if not groq_api_key:
+            raise ValueError("未设置GROQ_API_KEY环境变量")
+        
+        # 创建Groq LLM实例
+        groq_llm_kr = groq.LLM(
+            model="llama3-8b-8192",
+            api_key=groq_api_key,
+            system_prompt=KR_PROMPT
+        )
+        
+        groq_llm_vn = groq.LLM(
+            model="llama3-8b-8192",
+            api_key=groq_api_key,
+            system_prompt=VN_PROMPT
+        )
+        
+        # 创建Agent会话
+        agent_session = AgentSession(
+            kr_translator=groq_llm_kr,
+            vn_translator=groq_llm_vn
+        )
+        
+        logger.info("✅ Agent会话创建成功")
+        return agent_session
+        
+    except Exception as e:
+        logger.error(f"❌ Agent会话创建失败: {e}")
+        logger.error(f"📋 错误详情: {type(e).__name__}: {e}")
+        raise e 
