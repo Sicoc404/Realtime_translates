@@ -131,6 +131,10 @@ async def lifespan(app: FastAPI):
         logger.info("正在启动心跳更新任务...")
         heartbeat_task = asyncio.create_task(update_heartbeat())
         logger.info("✅ 心跳更新任务已启动")
+        
+        # 确保服务状态为运行中
+        is_service_running = True
+        logger.info("✅ 翻译服务状态已设置为运行中")
     except Exception as e:
         logger.error(f"❌ 启动心跳更新任务失败: {str(e)}")
         heartbeat_task = None
@@ -206,13 +210,14 @@ async def get_status():
     
     return {
         "is_running": is_service_running,
-        "service_alive": service_alive,
+        "worker_alive": service_alive,  # 修改字段名以匹配JavaScript代码
+        "service_alive": service_alive,  # 保留原字段名以防其他地方使用
         "last_heartbeat": last_heartbeat,
         "heartbeat_age": heartbeat_age,
         "rooms": {
-            "zh": ROOM_ZH,
-            "kr": ROOM_KR,
-            "vn": ROOM_VN
+            "chinese": ROOM_ZH,
+            "korean": ROOM_KR,
+            "vietnamese": ROOM_VN
         },
         "timestamp": current_time
     }
