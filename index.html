@@ -602,9 +602,9 @@
         let microphoneVisualizer = null;
         let speakerVisualizer = null;
         let roomMap = {
-            'zh': 'room_zh',
-            'kr': 'room_kr',
-            'vn': 'room_vn'
+            'zh': 'zh',
+            'kr': 'kr',
+            'vn': 'vn'
         };
 
         // ⚙️ LiveKit WebSocket URL
@@ -1042,7 +1042,7 @@
             aiSpeakerRooms = [];
             
             // 创建到所有房间的连接
-            const rooms = ['room_zh', 'room_kr', 'room_vn'];
+            const rooms = ['zh', 'kr', 'vn'];
             
             for (const roomName of rooms) {
                 try {
