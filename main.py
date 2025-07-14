@@ -62,9 +62,9 @@ LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 # 房间名称 - 简化版本，与前端保持一致
-ROOM_ZH = "zh"    # 中文原音房间
-ROOM_KR = "kr"    # 韩文翻译房间  
-ROOM_VN = "vn"    # 越南文翻译房间
+ROOM_ZH = "room_zh"    # 中文原音房间
+ROOM_KR = "room_kr"    # 韩文翻译房间  
+ROOM_VN = "room_vn"    # 越南文翻译房间
 
 # 注释掉旧的导入，现在只使用LiveKit Agent系统
 # 旧系统：
@@ -168,6 +168,9 @@ async def start_agent_services():
         
         # 获取LiveKit配置
         livekit_url = os.environ.get("LIVEKIT_URL", "")
+        livekit_api_key = os.environ.get("LIVEKIT_API_KEY", "")
+        livekit_api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+        
         if not livekit_url:
             logger.error("❌ LIVEKIT_URL环境变量未设置，无法启动Agent服务")
             return
@@ -179,8 +182,10 @@ async def start_agent_services():
             entrypoint_fnc=entrypoint,
             # 设置Agent名称以启用显式调度
             agent_name="translation-agent",
-            # 使用环境变量中的LiveKit URL
-            livekit_url=livekit_url,
+            # 使用环境变量中的LiveKit配置
+            host=livekit_url,
+            api_key=livekit_api_key,
+            api_secret=livekit_api_secret,
             # 开发模式设置
             load_threshold=float('inf'),  # 开发模式下不限制负载
         )
