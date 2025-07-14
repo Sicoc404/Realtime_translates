@@ -304,15 +304,20 @@ async def create_token(request: TokenRequest):
     """生成LiveKit访问令牌"""
     try:
         # 创建访问令牌
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=request.identity)
+        from livekit.api import AccessToken, VideoGrants
         
-        # 添加视频授权
-        token.with_grants(VideoGrants(
-            room_join=True,
+        # 创建VideoGrants
+        video_grant = VideoGrants(
             room=request.roomName,
+            room_join=True,
             can_publish=True,
             can_subscribe=True
-        ))
+        )
+        
+        # 创建AccessToken
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token.with_identity(request.identity)
+        token.with_grants(video_grant)
         
         # 生成JWT令牌
         jwt_token = token.to_jwt()
