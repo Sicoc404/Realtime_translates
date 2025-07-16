@@ -149,11 +149,22 @@ if __name__ == "__main__":
     logger.info(f"  - 韩文翻译: {ROOM_KR}")
     logger.info(f"  - 越南文翻译: {ROOM_VN}")
     
+    # 确保LiveKit环境变量设置正确
+    os.environ["LIVEKIT_URL"] = LIVEKIT_URL
+    os.environ["LIVEKIT_API_KEY"] = LIVEKIT_API_KEY
+    os.environ["LIVEKIT_API_SECRET"] = LIVEKIT_API_SECRET
+    
+    logger.info(f"🔍 LiveKit配置:")
+    logger.info(f"  URL: {LIVEKIT_URL}")
+    logger.info(f"  API_KEY: {LIVEKIT_API_KEY[:8]}...")
+    logger.info(f"  API_SECRET: {LIVEKIT_API_SECRET[:8]}...")
+    
     # 运行Agent
     agents.cli.run_app(
         agents.WorkerOptions(
             entrypoint_fnc=entrypoint,
-            host=LIVEKIT_URL,
+            host="0.0.0.0",  # 本地HTTP服务器绑定地址
+            port=0,  # 让系统自动分配端口
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET,
             agent_name="translation-agent",
