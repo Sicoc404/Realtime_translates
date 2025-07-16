@@ -281,11 +281,22 @@ if __name__ == "__main__":
     test_dns_resolution()
     
     try:
+        # 确保LiveKit环境变量设置正确
+        os.environ["LIVEKIT_URL"] = LIVEKIT_URL
+        os.environ["LIVEKIT_API_KEY"] = LIVEKIT_API_KEY
+        os.environ["LIVEKIT_API_SECRET"] = LIVEKIT_API_SECRET
+        
+        logger.info(f"🔍 LiveKit环境变量设置:")
+        logger.info(f"  LIVEKIT_URL: {LIVEKIT_URL}")
+        logger.info(f"  LIVEKIT_API_KEY: {LIVEKIT_API_KEY[:8]}...")
+        logger.info(f"  LIVEKIT_API_SECRET: {LIVEKIT_API_SECRET[:8]}...")
+        
         # 创建工作器选项，确保使用正确的环境变量
         worker_options = WorkerOptions(
             entrypoint_fnc=entrypoint,
             # 使用固定IP地址而不是主机名，避免DNS解析问题
             host="0.0.0.0",  # 绑定到所有网络接口
+            port=0,  # 让系统自动分配端口
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET,
             # 设置Agent名称以启用显式调度
@@ -295,7 +306,8 @@ if __name__ == "__main__":
         )
         
         logger.info(f"🚀 启动LiveKit Agent，连接到: {LIVEKIT_URL}")
-        logger.info(f"🔧 工作器配置: host={worker_options.host}, agent_name={worker_options.agent_name}")
+        logger.info(f"🔧 工作器配置: host={worker_options.host}, port={worker_options.port}")
+        logger.info(f"🔧 Agent名称: {worker_options.agent_name}")
         
         agents.cli.run_app(worker_options)
     except Exception as e:
