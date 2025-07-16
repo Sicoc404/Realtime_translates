@@ -61,7 +61,7 @@ LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "secret")  # 默认开
 # Groq API 密钥
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
-# 房间名称 - 简化版本，与前端保持一致
+# 房间名称 - 与前端保持一致
 ROOM_ZH = "room_zh"    # 中文原音房间
 ROOM_KR = "room_kr"    # 韩文翻译房间  
 ROOM_VN = "room_vn"    # 越南文翻译房间
@@ -177,15 +177,26 @@ async def start_agent_services():
             
         logger.info(f"🔗 连接到LiveKit服务器: {livekit_url}")
         
+        # 确保LiveKit环境变量设置正确
+        os.environ["LIVEKIT_URL"] = livekit_url
+        os.environ["LIVEKIT_API_KEY"] = livekit_api_key
+        os.environ["LIVEKIT_API_SECRET"] = livekit_api_secret
+        
+        logger.info(f"🔍 LiveKit环境变量设置:")
+        logger.info(f"  URL: {livekit_url}")
+        logger.info(f"  API_KEY: {livekit_api_key[:8]}...")
+        logger.info(f"  API_SECRET: {livekit_api_secret[:8]}...")
+        
         # 创建工作器选项
         worker_options = WorkerOptions(
             entrypoint_fnc=entrypoint,
-            # 设置Agent名称以启用显式调度
-            agent_name="translation-agent",
-            # 使用环境变量中的LiveKit配置
-            host=livekit_url,
+            # 使用正确的本地HTTP服务器绑定地址
+            host="0.0.0.0",
+            port=0,  # 让系统自动分配端口
             api_key=livekit_api_key,
             api_secret=livekit_api_secret,
+            # 设置Agent名称以启用显式调度
+            agent_name="translation-agent",
             # 开发模式设置
             load_threshold=float('inf'),  # 开发模式下不限制负载
         )
@@ -197,20 +208,17 @@ async def start_agent_services():
         worker_task = asyncio.create_task(worker.run())
         
         agent_processes["translation_worker"] = {
+            "worker": worker,
             "task": worker_task,
-            "worker": worker
         }
         
-        logger.info("✅ LiveKit Agent工作器已启动")
-        logger.info("🎧 Agent正在等待房间连接...")
+        logger.info("✅ LiveKit Agent服务已启动")
         
-    except ImportError as e:
-        logger.error(f"❌ 导入LiveKit Agent失败: {str(e)}")
-        logger.warning("⚠️ 请确保安装了livekit-agents包")
     except Exception as e:
         logger.error(f"❌ 启动Agent服务失败: {str(e)}")
         import traceback
         logger.error(f"❌ 错误详情: {traceback.format_exc()}")
+        raise
 
 async def stop_agent_services():
     """停止LiveKit Agent服务"""
