@@ -7,6 +7,7 @@ LiveKit Agent - 符合官方文档的实时翻译实现
 import asyncio
 import os
 import logging
+import socket
 from dotenv import load_dotenv
 
 from livekit import agents
@@ -244,18 +245,60 @@ async def entrypoint(ctx: JobContext):
         raise
 
 
+# DNS解析测试函数
+def test_dns_resolution():
+    """测试DNS解析是否正常工作"""
+    try:
+        logger.info(f"🔍 当前主机名: {socket.gethostname()}")
+        logger.info(f"🔍 当前IP地址: {socket.gethostbyname(socket.gethostname())}")
+        
+        # 尝试解析一些常见域名
+        test_domains = ["google.com", "microsoft.com", "github.com"]
+        for domain in test_domains:
+            try:
+                ip = socket.gethostbyname(domain)
+                logger.info(f"✅ 域名 {domain} 解析成功: {ip}")
+            except Exception as e:
+                logger.error(f"❌ 域名 {domain} 解析失败: {str(e)}")
+        
+        # 尝试解析LIVEKIT_URL
+        if LIVEKIT_URL and "://" in LIVEKIT_URL:
+            livekit_host = LIVEKIT_URL.replace("wss://", "").replace("https://", "").split("/")[0].split(":")[0]
+            logger.info(f"🔍 尝试解析LiveKit主机: {livekit_host}")
+            try:
+                ip = socket.gethostbyname(livekit_host)
+                logger.info(f"✅ LiveKit主机解析成功: {ip}")
+            except Exception as e:
+                logger.error(f"❌ LiveKit主机解析失败: {str(e)}")
+                logger.error(f"⚠️ 请检查LIVEKIT_URL配置或网络连接")
+    except Exception as e:
+        logger.error(f"❌ DNS解析测试失败: {str(e)}")
+
+
 # 主函数 - 用于测试
 if __name__ == "__main__":
-    # 创建工作器选项，确保使用正确的环境变量
-    worker_options = WorkerOptions(
-        entrypoint_fnc=entrypoint,
-        # 使用环境变量中的LiveKit配置
-        host=LIVEKIT_URL,  # 参数名改为host
-        api_key=LIVEKIT_API_KEY,
-        api_secret=LIVEKIT_API_SECRET,
-        # 设置Agent名称以启用显式调度
-        agent_name="translation-agent",
-        # 开发模式设置
-        load_threshold=float('inf'),  # 开发模式下不限制负载
-    )
-    agents.cli.run_app(worker_options) 
+    # 测试DNS解析
+    test_dns_resolution()
+    
+    try:
+        # 创建工作器选项，确保使用正确的环境变量
+        worker_options = WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            # 使用固定IP地址而不是主机名，避免DNS解析问题
+            host="0.0.0.0",  # 绑定到所有网络接口
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET,
+            # 设置Agent名称以启用显式调度
+            agent_name="translation-agent",
+            # 开发模式设置
+            load_threshold=float('inf'),  # 开发模式下不限制负载
+        )
+        
+        logger.info(f"🚀 启动LiveKit Agent，连接到: {LIVEKIT_URL}")
+        logger.info(f"🔧 工作器配置: host={worker_options.host}, agent_name={worker_options.agent_name}")
+        
+        agents.cli.run_app(worker_options)
+    except Exception as e:
+        logger.error(f"❌ 启动LiveKit Agent失败: {str(e)}")
+        import traceback
+        logger.error(f"❌ 错误详情: {traceback.format_exc()}") 
